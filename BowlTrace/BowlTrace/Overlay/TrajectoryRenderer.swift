@@ -1,0 +1,83 @@
+import UIKit
+import CoreImage
+
+struct TrajectoryRenderer {
+    let videoSize: CGSize
+
+    func render(
+        trajectory: TrajectoryModel,
+        upToFraction fraction: Double,
+        style: AppState.TraceStyle
+    ) -> CIImage? {
+        let size = videoSize
+        let endIndex = max(1, Int(Double(trajectory.points.count) * fraction))
+        let visiblePoints = Array(trajectory.points.prefix(endIndex))
+        guard visiblePoints.count > 1 else { return nil }
+
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { ctx in
+            let bounds = CGRect(origin: .zero, size: size)
+            let path = trajectory.uiKitPath(in: bounds)
+
+            switch style {
+            case .dot:
+                drawDots(points: visiblePoints, in: bounds, ctx: ctx.cgContext)
+            case .line:
+                drawLine(path: path, ctx: ctx.cgContext)
+            case .glow:
+                drawGlow(path: path, ctx: ctx.cgContext)
+            }
+
+            // Current ball position indicator
+            if let last = visiblePoints.last {
+                let px = last.normalizedCenter.x * size.width
+                let py = (1.0 - last.normalizedCenter.y) * size.height
+                let radius: CGFloat = 10
+                let dotPath = UIBezierPath(ovalIn: CGRect(x: px - radius, y: py - radius,
+                                                          width: radius*2, height: radius*2))
+                UIColor.white.withAlphaComponent(0.9).setFill()
+                dotPath.fill()
+            }
+        }
+
+        return CIImage(image: image)
+    }
+
+    private func drawDots(points: [TrajectoryPoint], in bounds: CGRect, ctx: CGContext) {
+        for point in points {
+            let px = point.normalizedCenter.x * bounds.width
+            let py = (1.0 - point.normalizedCenter.y) * bounds.height
+            let progress = CGFloat(point.frameIndex) / CGFloat(max(points.count, 1))
+            let alpha = 0.4 + 0.6 * progress
+            let color = UIColor(red: 1.0, green: 0.42, blue: 0.0, alpha: alpha)
+            color.setFill()
+            let dotPath = UIBezierPath(ovalIn: CGRect(x: px - 5, y: py - 5, width: 10, height: 10))
+            dotPath.fill()
+        }
+    }
+
+    private func drawLine(path: UIBezierPath, ctx: CGContext) {
+        ctx.setLineWidth(4)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        UIColor(red: 1.0, green: 0.42, blue: 0.0, alpha: 0.85).setStroke()
+        path.stroke()
+    }
+
+    private func drawGlow(path: UIBezierPath, ctx: CGContext) {
+        // Outer glow
+        ctx.saveGState()
+        ctx.setShadow(offset: .zero, blur: 12, color: UIColor(red: 1.0, green: 0.42, blue: 0.0, alpha: 0.6).cgColor)
+        ctx.setLineWidth(6)
+        ctx.setLineCap(.round)
+        UIColor(red: 1.0, green: 0.57, blue: 0.25, alpha: 0.5).setStroke()
+        path.stroke()
+        ctx.restoreGState()
+
+        // Inner bright line
+        ctx.setLineWidth(3)
+        ctx.setLineCap(.round)
+        UIColor.white.withAlphaComponent(0.9).setStroke()
+        path.stroke()
+    }
+}

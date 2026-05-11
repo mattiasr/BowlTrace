@@ -1,0 +1,47 @@
+name: Build unsigned IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show selected Xcode
+        run: xcodebuild -version
+
+      - name: Build unsigned .app for iphoneos
+        working-directory: BowlTrace
+        run: |
+          xcodebuild \
+            -project BowlTrace.xcodeproj \
+            -target BowlTrace \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
+            build
+
+      - name: Package .app into IPA
+        working-directory: BowlTrace
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/BowlTrace.app Payload/
+          zip -qry BowlTrace.ipa Payload
+          rm -rf Payload
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BowlTrace-unsigned-ipa
+          path: BowlTrace/BowlTrace.ipa
+          if-no-files-found: error

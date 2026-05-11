@@ -1,0 +1,510 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		CC000000000000000000CC01 /* BowlTraceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB01; };
+		CC000000000000000000CC02 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB02; };
+		CC000000000000000000CC03 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB03; };
+		CC000000000000000000CC04 /* VideoAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB04; };
+		CC000000000000000000CC05 /* CameraSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB05; };
+		CC000000000000000000CC06 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB06; };
+		CC000000000000000000CC07 /* RecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB07; };
+		CC000000000000000000CC08 /* VideoImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB08; };
+		CC000000000000000000CC09 /* BallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB09; };
+		CC000000000000000000CC0A /* CircleHeuristic.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0A; };
+		CC000000000000000000CC0B /* TrajectoryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0B; };
+		CC000000000000000000CC0C /* FrameProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0C; };
+		CC000000000000000000CC0D /* BallTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0D; };
+		CC000000000000000000CC0E /* ScrubPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0E; };
+		CC000000000000000000CC0F /* TapToSeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0F; };
+		CC000000000000000000CC10 /* TrajectoryRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB10; };
+		CC000000000000000000CC11 /* OverlayCompositor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB11; };
+		CC000000000000000000CC12 /* VideoExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB12; };
+		CC000000000000000000CC13 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB13; };
+		CC000000000000000000CC14 /* CaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB14; };
+		CC000000000000000000CC15 /* ProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB15; };
+		CC000000000000000000CC16 /* ManualSelectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB16; };
+		CC000000000000000000CC17 /* ResultPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB17; };
+		CC000000000000000000CC18 /* BowlTraceButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB18; };
+		CC000000000000000000CC19 /* StatPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB19; };
+		CC000000000000000000CC1A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB1C; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		BB000000000000000000BB01 /* BowlTraceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlTraceApp.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB02 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB03 /* AppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppError.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB04 /* VideoAsset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoAsset.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB05 /* CameraSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSession.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB06 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB07 /* RecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinator.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB08 /* VideoImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoImporter.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB09 /* BallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallDetector.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB0A /* CircleHeuristic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleHeuristic.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB0B /* TrajectoryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrajectoryModel.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB0C /* FrameProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameProcessor.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB0D /* BallTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTracker.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB0E /* ScrubPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrubPlayerView.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB0F /* TapToSeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapToSeedView.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB10 /* TrajectoryRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrajectoryRenderer.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB11 /* OverlayCompositor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayCompositor.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB12 /* VideoExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoExporter.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB13 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB14 /* CaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureView.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB15 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB16 /* ManualSelectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualSelectView.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB17 /* ResultPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResultPreviewView.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB18 /* BowlTraceButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlTraceButtonStyle.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB19 /* StatPillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatPillView.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB1A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BB000000000000000000BB1B /* BowlTrace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BowlTrace.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB000000000000000000BB1C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Resources/Assets.xcassets"; sourceTree = "<group>"; name = Assets.xcassets; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		DD000000000000000000DD02 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AA000000000000000000AA01 /* BowlTrace */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000AA03 /* App */,
+				AA000000000000000000AA04 /* Models */,
+				AA000000000000000000AA05 /* Capture */,
+				AA000000000000000000AA06 /* Import */,
+				AA000000000000000000AA07 /* Detection */,
+				AA000000000000000000AA08 /* Tracking */,
+				AA000000000000000000AA09 /* Fallback */,
+				AA000000000000000000AA0A /* Overlay */,
+				AA000000000000000000AA0B /* Export */,
+				AA000000000000000000AA0C /* UI */,
+				BB000000000000000000BB1C /* Assets.xcassets */,
+				BB000000000000000000BB1A /* Info.plist */,
+			);
+			path = BowlTrace;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA02 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB1B /* BowlTrace.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AAFF /* MainGroup */ = {
+			isa = PBXGroup;
+			children = (
+				AA000000000000000000AA01 /* BowlTrace */,
+				AA000000000000000000AA02 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA03 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB01 /* BowlTraceApp.swift */,
+				BB000000000000000000BB02 /* AppState.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA04 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB03 /* AppError.swift */,
+				BB000000000000000000BB04 /* VideoAsset.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA05 /* Capture */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB05 /* CameraSession.swift */,
+				BB000000000000000000BB06 /* CameraPreviewView.swift */,
+				BB000000000000000000BB07 /* RecordingCoordinator.swift */,
+			);
+			path = Capture;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA06 /* Import */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB08 /* VideoImporter.swift */,
+			);
+			path = Import;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA07 /* Detection */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB09 /* BallDetector.swift */,
+				BB000000000000000000BB0A /* CircleHeuristic.swift */,
+			);
+			path = Detection;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA08 /* Tracking */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB0B /* TrajectoryModel.swift */,
+				BB000000000000000000BB0C /* FrameProcessor.swift */,
+				BB000000000000000000BB0D /* BallTracker.swift */,
+			);
+			path = Tracking;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA09 /* Fallback */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB0E /* ScrubPlayerView.swift */,
+				BB000000000000000000BB0F /* TapToSeedView.swift */,
+			);
+			path = Fallback;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA0A /* Overlay */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB10 /* TrajectoryRenderer.swift */,
+				BB000000000000000000BB11 /* OverlayCompositor.swift */,
+			);
+			path = Overlay;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA0B /* Export */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB12 /* VideoExporter.swift */,
+			);
+			path = Export;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA0C /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB13 /* HomeView.swift */,
+				BB000000000000000000BB14 /* CaptureView.swift */,
+				BB000000000000000000BB15 /* ProcessingView.swift */,
+				BB000000000000000000BB16 /* ManualSelectView.swift */,
+				BB000000000000000000BB17 /* ResultPreviewView.swift */,
+				AA000000000000000000AA0D /* Components */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA0D /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB18 /* BowlTraceButtonStyle.swift */,
+				BB000000000000000000BB19 /* StatPillView.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		FF000000000000000000FF02 /* BowlTrace */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EE000000000000000000EE06 /* Build configuration list for PBXNativeTarget "BowlTrace" */;
+			buildPhases = (
+				DD000000000000000000DD01 /* Sources */,
+				DD000000000000000000DD02 /* Frameworks */,
+				DD000000000000000000DD03 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BowlTrace;
+			productName = BowlTrace;
+			productReference = BB000000000000000000BB1B /* BowlTrace.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FF000000000000000000FF01 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					FF000000000000000000FF02 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+				};
+			};
+			buildConfigurationList = EE000000000000000000EE05 /* Build configuration list for PBXProject "BowlTrace" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AA000000000000000000AAFF;
+			productRefGroup = AA000000000000000000AA02 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				FF000000000000000000FF02 /* BowlTrace */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		DD000000000000000000DD03 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC000000000000000000CC1A /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		DD000000000000000000DD01 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC000000000000000000CC01 /* BowlTraceApp.swift in Sources */,
+				CC000000000000000000CC02 /* AppState.swift in Sources */,
+				CC000000000000000000CC03 /* AppError.swift in Sources */,
+				CC000000000000000000CC04 /* VideoAsset.swift in Sources */,
+				CC000000000000000000CC05 /* CameraSession.swift in Sources */,
+				CC000000000000000000CC06 /* CameraPreviewView.swift in Sources */,
+				CC000000000000000000CC07 /* RecordingCoordinator.swift in Sources */,
+				CC000000000000000000CC08 /* VideoImporter.swift in Sources */,
+				CC000000000000000000CC09 /* BallDetector.swift in Sources */,
+				CC000000000000000000CC0A /* CircleHeuristic.swift in Sources */,
+				CC000000000000000000CC0B /* TrajectoryModel.swift in Sources */,
+				CC000000000000000000CC0C /* FrameProcessor.swift in Sources */,
+				CC000000000000000000CC0D /* BallTracker.swift in Sources */,
+				CC000000000000000000CC0E /* ScrubPlayerView.swift in Sources */,
+				CC000000000000000000CC0F /* TapToSeedView.swift in Sources */,
+				CC000000000000000000CC10 /* TrajectoryRenderer.swift in Sources */,
+				CC000000000000000000CC11 /* OverlayCompositor.swift in Sources */,
+				CC000000000000000000CC12 /* VideoExporter.swift in Sources */,
+				CC000000000000000000CC13 /* HomeView.swift in Sources */,
+				CC000000000000000000CC14 /* CaptureView.swift in Sources */,
+				CC000000000000000000CC15 /* ProcessingView.swift in Sources */,
+				CC000000000000000000CC16 /* ManualSelectView.swift in Sources */,
+				CC000000000000000000CC17 /* ResultPreviewView.swift in Sources */,
+				CC000000000000000000CC18 /* BowlTraceButtonStyle.swift in Sources */,
+				CC000000000000000000CC19 /* StatPillView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		EE000000000000000000EE01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		EE000000000000000000EE02 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		EE000000000000000000EE03 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BowlTrace/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bowltrace.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		EE000000000000000000EE04 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BowlTrace/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bowltrace.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		EE000000000000000000EE05 /* Build configuration list for PBXProject "BowlTrace" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EE000000000000000000EE01 /* Debug */,
+				EE000000000000000000EE02 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EE000000000000000000EE06 /* Build configuration list for PBXNativeTarget "BowlTrace" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EE000000000000000000EE03 /* Debug */,
+				EE000000000000000000EE04 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = FF000000000000000000FF01 /* Project object */;
+}
