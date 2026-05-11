@@ -1,0 +1,350 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1820 880" font-family="-apple-system, system-ui, 'SF Pro', sans-serif">
+  <!-- ============================== BowlTrace iPhone Mockups ============================== -->
+  <!-- Design tokens (from BowlTraceApp.swift) -->
+  <!-- bg #0A0A0F · surface #14141C · elev #1E1E2A · accent #FF6B00 · accentSoft #FF9240    -->
+  <!-- textPrimary #F5F5F7 · textSecondary #8E8E9A · success #30D158 · warning #FFD60A      -->
+
+  <defs>
+    <!-- Phone frame -->
+    <linearGradient id="bezel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A2A33"/>
+      <stop offset="1" stop-color="#0E0E13"/>
+    </linearGradient>
+
+    <!-- Logo halo (Home) -->
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FF6B00" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FF6B00" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Camera preview (CaptureView): subtle lane perspective -->
+    <linearGradient id="lane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1B1B22"/>
+      <stop offset="0.6" stop-color="#26241F"/>
+      <stop offset="1" stop-color="#3A3526"/>
+    </linearGradient>
+
+    <!-- Scan band (ProcessingView) -->
+    <linearGradient id="scan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"   stop-color="#FF6B00" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#FF6B00" stop-opacity="0.55"/>
+      <stop offset="1"   stop-color="#FF6B00" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Trajectory glow (ResultPreview) -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Reusable phone frame group -->
+    <g id="phone">
+      <!-- outer frame -->
+      <rect x="0" y="0" width="320" height="690" rx="44" fill="url(#bezel)"/>
+      <!-- inner screen mask region -->
+      <rect x="6" y="6" width="308" height="678" rx="38" fill="#0A0A0F"/>
+      <!-- dynamic island -->
+      <rect x="115" y="18" width="90" height="26" rx="13" fill="#000"/>
+      <!-- home indicator -->
+      <rect x="115" y="668" width="90" height="4" rx="2" fill="#F5F5F7" opacity="0.85"/>
+    </g>
+
+    <!-- Status bar -->
+    <g id="statusbar">
+      <text x="32" y="34" fill="#F5F5F7" font-size="13" font-weight="600">9:41</text>
+      <!-- signal/wifi/battery -->
+      <g transform="translate(232,24)" fill="#F5F5F7">
+        <rect x="0"  y="6" width="3" height="6" rx="1"/>
+        <rect x="5"  y="4" width="3" height="8" rx="1"/>
+        <rect x="10" y="2" width="3" height="10" rx="1"/>
+        <rect x="15" y="0" width="3" height="12" rx="1"/>
+        <path d="M28 10c4-4 12-4 16 0l-2 2c-3-3-9-3-12 0z"/>
+        <path d="M32 6 l8 0 0 4 -8 0z" opacity="0.9"/>
+        <rect x="50" y="2" width="22" height="10" rx="3" fill="none" stroke="#F5F5F7" stroke-width="1"/>
+        <rect x="52" y="4" width="16" height="6" rx="1"/>
+        <rect x="73" y="5" width="2" height="4"/>
+      </g>
+    </g>
+  </defs>
+
+  <!-- ===== Canvas background ===== -->
+  <rect width="100%" height="100%" fill="#070710"/>
+  <text x="40" y="44" fill="#F5F5F7" font-size="22" font-weight="700">BowlTrace · iPhone UI Mockups</text>
+  <text x="40" y="66" fill="#8E8E9A" font-size="13">Portrait only · dark theme · accent #FF6B00</text>
+
+  <!-- ===================================================================== -->
+  <!-- 1) HOME                                                                -->
+  <!-- ===================================================================== -->
+  <g transform="translate(40,110)">
+    <use href="#phone"/>
+    <g transform="translate(6,6)">
+      <use href="#statusbar"/>
+      <!-- logo halo -->
+      <circle cx="154" cy="220" r="80" fill="url(#halo)"/>
+      <circle cx="154" cy="220" r="48" fill="#FF6B00" fill-opacity="0.15"/>
+      <!-- bowling figure glyph (simplified) -->
+      <g transform="translate(154,220)" fill="#FF6B00">
+        <circle cx="-2" cy="-18" r="7"/>
+        <path d="M-10 -8 L10 -8 L6 22 L-6 22 Z"/>
+        <circle cx="14" cy="14" r="6" fill="#FF6B00" stroke="#0A0A0F" stroke-width="2"/>
+      </g>
+      <!-- title -->
+      <text x="154" y="316" text-anchor="middle" fill="#F5F5F7" font-size="28" font-weight="700">BowlTrace</text>
+      <text x="154" y="342" text-anchor="middle" fill="#8E8E9A" font-size="14">Track Every Roll</text>
+      <!-- primary button -->
+      <rect x="28" y="500" width="252" height="52" rx="26" fill="#FF6B00"/>
+      <g transform="translate(154,526)" fill="#0A0A0F">
+        <circle cx="-58" cy="0" r="9" fill="none" stroke="#0A0A0F" stroke-width="2"/>
+        <circle cx="-58" cy="0" r="4"/>
+      </g>
+      <text x="160" y="532" text-anchor="middle" fill="#0A0A0F" font-size="16" font-weight="600">Record Video</text>
+      <!-- secondary outline button -->
+      <rect x="28" y="566" width="252" height="52" rx="26" fill="none" stroke="#FF6B00" stroke-width="1.5"/>
+      <g transform="translate(108,592)" stroke="#FF6B00" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <circle r="9"/>
+        <path d="M0 4 L0 -4 M-4 0 L0 -4 L4 0"/>
+      </g>
+      <text x="172" y="598" text-anchor="middle" fill="#FF6B00" font-size="16" font-weight="500">Import Video</text>
+    </g>
+    <text x="160" y="730" text-anchor="middle" fill="#8E8E9A" font-size="13">1 · Home</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- 2) CAPTURE                                                             -->
+  <!-- ===================================================================== -->
+  <g transform="translate(390,110)">
+    <use href="#phone"/>
+    <g transform="translate(6,6)">
+      <!-- camera preview fills screen -->
+      <clipPath id="capClip"><rect x="0" y="0" width="308" height="678" rx="38"/></clipPath>
+      <g clip-path="url(#capClip)">
+        <rect x="0" y="0" width="308" height="678" fill="url(#lane)"/>
+        <!-- lane guides (dashed) -->
+        <path d="M62 220 L62 678" stroke="#FFFFFF" stroke-opacity="0.32" stroke-width="1" stroke-dasharray="8 6"/>
+        <path d="M246 220 L246 678" stroke="#FFFFFF" stroke-opacity="0.32" stroke-width="1" stroke-dasharray="8 6"/>
+        <!-- distant pins suggestion -->
+        <g transform="translate(154,250)" fill="#F5F5F7" opacity="0.55">
+          <ellipse cx="-22" cy="0" rx="3" ry="6"/>
+          <ellipse cx="-7"  cy="-4" rx="3" ry="6"/>
+          <ellipse cx="7"   cy="-4" rx="3" ry="6"/>
+          <ellipse cx="22"  cy="0" rx="3" ry="6"/>
+        </g>
+      </g>
+      <use href="#statusbar"/>
+
+      <!-- top bar -->
+      <g transform="translate(0,68)">
+        <!-- close -->
+        <circle cx="36" cy="0" r="18" fill="#000" fill-opacity="0.45"/>
+        <path d="M30 -6 L42 6 M42 -6 L30 6" stroke="#F5F5F7" stroke-width="2" stroke-linecap="round"/>
+        <!-- timer pill -->
+        <rect x="118" y="-14" width="74" height="28" rx="14" fill="#000" fill-opacity="0.5"/>
+        <circle cx="132" cy="0" r="4" fill="#FF453A"/>
+        <text x="142" y="4" fill="#F5F5F7" font-size="12" font-weight="600" font-family="ui-monospace, monospace">00:07</text>
+        <!-- flash -->
+        <circle cx="272" cy="0" r="18" fill="#000" fill-opacity="0.45"/>
+        <path d="M270 -8 L264 2 L271 2 L268 10 L276 -2 L270 -2 Z" fill="#FFD60A" stroke="#FFD60A" stroke-width="1"/>
+      </g>
+
+      <!-- zoom slider -->
+      <g transform="translate(0,540)">
+        <text x="40" y="6" fill="#8E8E9A" font-size="11" font-weight="500">1×</text>
+        <line x1="60" y1="2" x2="248" y2="2" stroke="#2A2A35" stroke-width="3" stroke-linecap="round"/>
+        <line x1="60" y1="2" x2="160" y2="2" stroke="#FF6B00" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="160" cy="2" r="8" fill="#FFFFFF"/>
+        <text x="268" y="6" fill="#8E8E9A" font-size="11" font-weight="500">5×</text>
+      </g>
+
+      <!-- record button -->
+      <g transform="translate(154,610)">
+        <circle r="36" fill="none" stroke="#FFFFFF" stroke-opacity="0.85" stroke-width="3"/>
+        <circle r="28" fill="#FF453A"/>
+      </g>
+    </g>
+    <text x="160" y="730" text-anchor="middle" fill="#8E8E9A" font-size="13">2 · Capture</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- 3) PROCESSING                                                          -->
+  <!-- ===================================================================== -->
+  <g transform="translate(740,110)">
+    <use href="#phone"/>
+    <g transform="translate(6,6)">
+      <use href="#statusbar"/>
+      <!-- scan box -->
+      <rect x="28" y="120" width="252" height="180" rx="14" fill="#14141C"/>
+      <!-- inner gridish video stand-in -->
+      <g opacity="0.25">
+        <line x1="40"  y1="220" x2="268" y2="200" stroke="#FF9240"/>
+        <line x1="40"  y1="240" x2="268" y2="230" stroke="#FF9240"/>
+        <line x1="80"  y1="140" x2="80"  y2="288" stroke="#FF9240"/>
+        <line x1="220" y1="140" x2="220" y2="288" stroke="#FF9240"/>
+      </g>
+      <!-- scan band -->
+      <rect x="28" y="200" width="252" height="34" fill="url(#scan)"/>
+      <rect x="28" y="120" width="252" height="180" rx="14" fill="none" stroke="#1E1E2A"/>
+
+      <!-- status text -->
+      <text x="154" y="354" text-anchor="middle" fill="#F5F5F7" font-size="17" font-weight="600">Mapping trajectory…</text>
+
+      <!-- progress -->
+      <rect x="40" y="382" width="228" height="6" rx="3" fill="#1E1E2A"/>
+      <rect x="40" y="382" width="148" height="6" rx="3" fill="#FF6B00"/>
+
+      <!-- confidence -->
+      <text x="154" y="434" text-anchor="middle" fill="#8E8E9A" font-size="12">Detection confidence</text>
+      <rect x="78" y="448" width="120" height="5" rx="2.5" fill="#1E1E2A"/>
+      <rect x="78" y="448" width="102" height="5" rx="2.5" fill="#30D158"/>
+      <text x="214" y="453" fill="#30D158" font-size="12" font-weight="600" font-family="ui-monospace, monospace">85%</text>
+
+      <!-- cancel ghost -->
+      <text x="154" y="610" text-anchor="middle" fill="#8E8E9A" font-size="15" font-weight="500">Cancel</text>
+    </g>
+    <text x="160" y="730" text-anchor="middle" fill="#8E8E9A" font-size="13">3 · Processing</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- 4) MANUAL SEED (fallback)                                              -->
+  <!-- ===================================================================== -->
+  <g transform="translate(1090,110)">
+    <use href="#phone"/>
+    <g transform="translate(6,6)">
+      <use href="#statusbar"/>
+      <!-- header -->
+      <circle cx="34" cy="74" r="18" fill="#1E1E2A"/>
+      <path d="M28 68 L40 80 M40 68 L28 80" stroke="#F5F5F7" stroke-width="2" stroke-linecap="round"/>
+      <text x="154" y="80" text-anchor="middle" fill="#F5F5F7" font-size="16" font-weight="600">Tap the ball</text>
+
+      <!-- frame still -->
+      <rect x="20" y="118" width="268" height="320" rx="14" fill="#101018"/>
+      <!-- darken cues simulating a lane frame -->
+      <path d="M20 380 L288 380 L288 438 L20 438 Z" fill="#1A1810" opacity="0.7"/>
+      <ellipse cx="200" cy="350" rx="14" ry="14" fill="#3A2A18"/>
+      <!-- reticle -->
+      <g transform="translate(200,350)" stroke="#FF6B00" fill="none">
+        <circle r="22" stroke-width="2"/>
+        <circle r="32" stroke-width="1" opacity="0.45"/>
+        <line x1="-40" y1="0" x2="-26" y2="0" stroke-width="2"/>
+        <line x1="26"  y1="0" x2="40"  y2="0" stroke-width="2"/>
+        <line x1="0" y1="-40" x2="0" y2="-26" stroke-width="2"/>
+        <line x1="0" y1="26"  x2="0" y2="40"  stroke-width="2"/>
+      </g>
+      <text x="154" y="468" text-anchor="middle" fill="#8E8E9A" font-size="11">Confidence updates live as you scrub</text>
+
+      <!-- scrubber -->
+      <g transform="translate(0,500)">
+        <line x1="28" y1="0" x2="280" y2="0" stroke="#1E1E2A" stroke-width="4" stroke-linecap="round"/>
+        <line x1="28" y1="0" x2="160" y2="0" stroke="#FF6B00" stroke-width="4" stroke-linecap="round"/>
+        <rect x="153" y="-12" width="14" height="24" rx="4" fill="#F5F5F7"/>
+      </g>
+      <text x="32"  y="534" fill="#8E8E9A" font-size="11" font-family="ui-monospace, monospace">0:00</text>
+      <text x="248" y="534" fill="#8E8E9A" font-size="11" font-family="ui-monospace, monospace">0:14</text>
+
+      <!-- confirm primary -->
+      <rect x="28" y="580" width="252" height="50" rx="25" fill="#FF6B00"/>
+      <text x="154" y="611" text-anchor="middle" fill="#0A0A0F" font-size="15" font-weight="600">Confirm &amp; Track</text>
+    </g>
+    <text x="160" y="730" text-anchor="middle" fill="#8E8E9A" font-size="13">4 · Manual Seed</text>
+  </g>
+
+  <!-- ===================================================================== -->
+  <!-- 5) RESULT PREVIEW                                                      -->
+  <!-- ===================================================================== -->
+  <g transform="translate(1440,110)">
+    <use href="#phone"/>
+    <g transform="translate(6,6)">
+      <use href="#statusbar"/>
+      <!-- nav -->
+      <g transform="translate(0,70)">
+        <circle cx="34" r="18" fill="#1E1E2A"/>
+        <path d="M28 -6 L40 6 M40 -6 L28 6" stroke="#F5F5F7" stroke-width="2" stroke-linecap="round"/>
+        <text x="154" y="6" text-anchor="middle" fill="#F5F5F7" font-size="15" font-weight="600">Your Trace</text>
+        <circle cx="274" r="18" fill="#1E1E2A"/>
+        <circle cx="266" cy="0" r="2" fill="#F5F5F7"/>
+        <circle cx="274" cy="0" r="2" fill="#F5F5F7"/>
+        <circle cx="282" cy="0" r="2" fill="#F5F5F7"/>
+      </g>
+
+      <!-- player (16:9 ≈ 268×151) -->
+      <g transform="translate(20,110)">
+        <rect width="268" height="151" rx="12" fill="#000"/>
+        <!-- faded ball start -->
+        <circle cx="32" cy="118" r="8" fill="#FF9240" opacity="0.4"/>
+        <!-- trajectory curve with glow -->
+        <path d="M32 118 Q90 70 150 60 T260 38" stroke="#FF6B00" stroke-width="6" fill="none" opacity="0.35" filter="url(#glow)"/>
+        <path d="M32 118 Q90 70 150 60 T260 38" stroke="#FFFFFF" stroke-width="2" fill="none"/>
+        <!-- current ball position -->
+        <circle cx="150" cy="60" r="7" fill="#FFFFFF"/>
+        <circle cx="150" cy="60" r="11" fill="#FFFFFF" opacity="0.18"/>
+      </g>
+
+      <!-- stat pills -->
+      <g transform="translate(20,278)">
+        <g>
+          <rect width="82" height="50" rx="10" fill="#14141C"/>
+          <text x="41" y="22" text-anchor="middle" fill="#F5F5F7" font-size="15" font-weight="700">14<tspan font-size="10" fill="#8E8E9A"> mph</tspan></text>
+          <text x="41" y="40" text-anchor="middle" fill="#8E8E9A" font-size="10">Speed</text>
+        </g>
+        <g transform="translate(93,0)">
+          <rect width="82" height="50" rx="10" fill="#14141C"/>
+          <text x="41" y="22" text-anchor="middle" fill="#F5F5F7" font-size="15" font-weight="700">6<tspan font-size="10" fill="#8E8E9A">°</tspan></text>
+          <text x="41" y="40" text-anchor="middle" fill="#8E8E9A" font-size="10">Angle</text>
+        </g>
+        <g transform="translate(186,0)">
+          <rect width="82" height="50" rx="10" fill="#14141C"/>
+          <text x="41" y="22" text-anchor="middle" fill="#F5F5F7" font-size="15" font-weight="700">320</text>
+          <text x="41" y="40" text-anchor="middle" fill="#8E8E9A" font-size="10">Revs</text>
+        </g>
+      </g>
+
+      <!-- trace style picker (segmented) -->
+      <text x="154" y="358" text-anchor="middle" fill="#8E8E9A" font-size="11" font-weight="500">Trace Style</text>
+      <g transform="translate(28,370)">
+        <rect width="252" height="34" rx="9" fill="#14141C"/>
+        <rect x="86" y="3" width="80" height="28" rx="7" fill="#1E1E2A" stroke="#FF6B00" stroke-width="1"/>
+        <text x="42"  y="22" text-anchor="middle" fill="#8E8E9A" font-size="12">Dot</text>
+        <text x="126" y="22" text-anchor="middle" fill="#F5F5F7" font-size="12" font-weight="600">Line</text>
+        <text x="210" y="22" text-anchor="middle" fill="#8E8E9A" font-size="12">Glow</text>
+      </g>
+
+      <!-- primary save -->
+      <rect x="28" y="478" width="252" height="52" rx="26" fill="#FF6B00"/>
+      <g transform="translate(64,504)" stroke="#0A0A0F" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <circle r="9"/>
+        <path d="M0 -4 L0 4 M-4 0 L0 4 L4 0"/>
+      </g>
+      <text x="170" y="510" text-anchor="middle" fill="#0A0A0F" font-size="15" font-weight="600">Save to Camera Roll</text>
+
+      <!-- share ghost -->
+      <text x="154" y="566" text-anchor="middle" fill="#8E8E9A" font-size="14" font-weight="500">Share</text>
+
+      <!-- success toast preview -->
+      <g transform="translate(38,612)">
+        <rect width="232" height="38" rx="19" fill="#14141C" stroke="#1E1E2A"/>
+        <circle cx="22" cy="19" r="7" fill="#30D158"/>
+        <path d="M18 19 L21 22 L26 16" stroke="#0A0A0F" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <text x="40" y="24" fill="#F5F5F7" font-size="12" font-weight="500">Saved to Camera Roll</text>
+      </g>
+    </g>
+    <text x="160" y="730" text-anchor="middle" fill="#8E8E9A" font-size="13">5 · Result Preview</text>
+  </g>
+
+  <!-- footer legend -->
+  <g transform="translate(40,820)" font-size="11" fill="#8E8E9A">
+    <text x="0" y="0">Tokens:</text>
+    <rect x="60"  y="-10" width="14" height="14" rx="3" fill="#0A0A0F" stroke="#2A2A35"/>
+    <text x="80" y="0">bg</text>
+    <rect x="110" y="-10" width="14" height="14" rx="3" fill="#14141C"/>
+    <text x="130" y="0">surface</text>
+    <rect x="180" y="-10" width="14" height="14" rx="3" fill="#FF6B00"/>
+    <text x="200" y="0">accent</text>
+    <rect x="250" y="-10" width="14" height="14" rx="3" fill="#30D158"/>
+    <text x="270" y="0">success</text>
+    <rect x="320" y="-10" width="14" height="14" rx="3" fill="#FFD60A"/>
+    <text x="340" y="0">warning</text>
+    <rect x="395" y="-10" width="14" height="14" rx="3" fill="#FF453A"/>
+    <text x="415" y="0">destructive</text>
+    <text x="540" y="0">Source: BowlTrace/UI/*.swift · 393×852 pt @ 0.81×</text>
+  </g>
+</svg>
