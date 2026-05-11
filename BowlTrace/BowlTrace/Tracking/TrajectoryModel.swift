@@ -16,21 +16,6 @@ struct TrajectoryPoint: Codable, Identifiable {
         self.normalizedCenter = normalizedCenter
         self.confidence = confidence
     }
-
-    enum CodingKeys: String, CodingKey {
-        case id, frameIndex, timestamp, normalizedCenter, confidence
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(UUID.self, forKey: .id)
-        frameIndex = try c.decode(Int.self, forKey: .frameIndex)
-        timestamp = try c.decode(Double.self, forKey: .timestamp)
-        let x = try c.decode(Double.self, forKey: .normalizedCenter)
-        let y = try c.decode(Double.self, forKey: .timestamp)
-        normalizedCenter = CGPoint(x: x, y: y)
-        confidence = try c.decode(Float.self, forKey: .confidence)
-    }
 }
 
 struct TrajectoryModel {

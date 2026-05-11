@@ -1,5 +1,7 @@
 import CoreImage
+import CoreImage.CIFilterBuiltins
 import AVFoundation
+import Metal
 
 struct OverlayCompositor {
     private let ciContext: CIContext = {

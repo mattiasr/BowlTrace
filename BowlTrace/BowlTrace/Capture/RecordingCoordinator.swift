@@ -7,12 +7,13 @@ final class RecordingCoordinator: NSObject, ObservableObject {
     @Published var duration: TimeInterval = 0
     @Published var outputURL: URL?
 
-    private var assetWriter: AVAssetWriter?
-    private var videoInput: AVAssetWriterInput?
-    private var audioInput: AVAssetWriterInput?
+    nonisolated(unsafe) private var assetWriter: AVAssetWriter?
+    nonisolated(unsafe) private var videoInput: AVAssetWriterInput?
+    nonisolated(unsafe) private var audioInput: AVAssetWriterInput?
     private var videoOutput: AVCaptureVideoDataOutput?
     private var audioOutput: AVCaptureAudioDataOutput?
-    private var startTime: CMTime?
+    nonisolated(unsafe) private var startTime: CMTime?
+    nonisolated(unsafe) private var writeEnabled = false
     private var timer: Timer?
 
     private let sessionQueue = DispatchQueue(label: "com.bowltrace.recording", qos: .userInteractive)
@@ -68,6 +69,7 @@ final class RecordingCoordinator: NSObject, ObservableObject {
         self.outputURL = url
         self.startTime = nil
         isRecording = true
+        writeEnabled = true
 
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, let start = self.startTime else { return }
@@ -79,6 +81,7 @@ final class RecordingCoordinator: NSObject, ObservableObject {
     }
 
     func stopRecording() async -> URL? {
+        writeEnabled = false
         isRecording = false
         timer?.invalidate()
         timer = nil
@@ -99,14 +102,14 @@ extension RecordingCoordinator: AVCaptureVideoDataOutputSampleBufferDelegate,
     nonisolated func captureOutput(_ output: AVCaptureOutput,
                                    didOutput sampleBuffer: CMSampleBuffer,
                                    from connection: AVCaptureConnection) {
-        guard let writer = assetWriter, isRecording else { return }
+        guard let writer = assetWriter, writeEnabled else { return }
 
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
         if writer.status == .unknown {
             writer.startWriting()
             writer.startSession(atSourceTime: pts)
-            Task { @MainActor in self.startTime = pts }
+            startTime = pts
         }
 
         guard writer.status == .writing else { return }

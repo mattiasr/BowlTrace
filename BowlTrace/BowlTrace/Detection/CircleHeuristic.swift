@@ -19,7 +19,7 @@ struct CircleHeuristic {
                                             orientation: .up,
                                             options: [:])
         let request = VNDetectContoursRequest()
-        request.contrastAdjustmentFactor = 1.5
+        request.contrastAdjustment = 1.5
         request.detectsDarkOnLight = true
 
         try? handler.perform([request])
@@ -29,7 +29,9 @@ struct CircleHeuristic {
         var bestCandidate: CircleCandidate?
         var bestScore: CGFloat = 0
 
-        processContour(observation.topLevelContour, best: &bestCandidate, bestScore: &bestScore)
+        for contour in observation.topLevelContours {
+            processContour(contour, best: &bestCandidate, bestScore: &bestScore)
+        }
 
         return bestCandidate
     }
@@ -64,7 +66,7 @@ struct CircleHeuristic {
 
         if score > bestScore && circularity > circularityThreshold {
             bestScore = score
-            bestCandidate = CircleCandidate(
+            best = CircleCandidate(
                 boundingBox: bbox,
                 confidence: Float(min(score, 1.0))
             )

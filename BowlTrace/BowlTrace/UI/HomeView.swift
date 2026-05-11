@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import AVFoundation
 
 struct HomeView: View {
     @EnvironmentObject var appState: AppState

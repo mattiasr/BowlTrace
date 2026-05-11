@@ -69,7 +69,7 @@ actor BallTracker {
         }
 
         reader.cancelReading()
-        trajectory.points = interpolateGaps(in: trajectory.points)
+        trajectory.points = interpolateGaps(trajectory.points)
         return trajectory
     }
 
