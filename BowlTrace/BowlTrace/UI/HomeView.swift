@@ -114,7 +114,7 @@ struct HomeView: View {
                 selectedSeedModeRaw = ImportSeedMode.manual.rawValue
                 pendingImportURL = nil
                 importedItem = nil
-                appState.triggerManualSeed(videoURL: url)
+                appState.triggerManualSeed(videoURL: url, reason: .userChoseManual)
             }
             Button("Cancel", role: .cancel) {
                 pendingImportURL = nil

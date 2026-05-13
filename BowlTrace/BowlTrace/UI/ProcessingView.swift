@@ -35,6 +35,14 @@ struct ProcessingView: View {
 
             // Status text
             VStack(spacing: 16) {
+                if !isExporting, let subtitle = processingSubtitle {
+                    Text(subtitle)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.btTextSecondary)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
+                }
+
                 Text(isExporting ? "Exporting video…" : appState.processingStage.rawValue)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundColor(.btTextPrimary)
@@ -76,6 +84,13 @@ struct ProcessingView: View {
             .padding(.bottom, 32)
         }
         .onAppear { startScanAnimation() }
+    }
+
+    private var processingSubtitle: String? {
+        switch appState.lastProcessingReason {
+        case .reanalyze: return "Re-analyzing your shot"
+        case .initial: return nil
+        }
     }
 
     private var confidenceColor: Color {

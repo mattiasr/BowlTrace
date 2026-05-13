@@ -12,6 +12,7 @@ struct ResultPreviewView: View {
     @State private var exportedURL: URL?
     @State private var playerProgress: Double = 0
     @State private var playerTimer: Timer?
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,6 +28,12 @@ struct ResultPreviewView: View {
         .overlay(alignment: .bottom) { if exportSuccess { successToast } }
         .sheet(isPresented: $showShareSheet) {
             if let url = exportedURL { ShareSheet(url: url) }
+        }
+        .alert("Delete this trace?", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive) { appState.reset() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("The trajectory will be discarded. The original video is unaffected.")
         }
         .onAppear { setupPlayer() }
         .onDisappear { playerTimer?.invalidate() }
@@ -51,12 +58,14 @@ struct ResultPreviewView: View {
             Menu {
                 Button("Share", systemImage: "square.and.arrow.up") { triggerShare() }
                 Button("Re-pick ball", systemImage: "scope") {
-                    appState.triggerManualSeed(videoURL: video.sourceURL)
+                    appState.triggerManualSeed(videoURL: video.sourceURL, reason: .userRepick)
                 }
                 Button("Re-analyze", systemImage: "arrow.clockwise") {
-                    appState.runAutoPipeline(videoURL: video.sourceURL)
+                    appState.runAutoPipeline(videoURL: video.sourceURL, reason: .reanalyze)
                 }
-                Button("Delete", systemImage: "trash", role: .destructive) { appState.reset() }
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                    showDeleteConfirmation = true
+                }
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 18, weight: .medium))

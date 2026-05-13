@@ -19,6 +19,19 @@ enum ProcessingStage: String {
     case finishing = "Finishing up…"
 }
 
+/// Why the user has landed in `ManualSelectView`. Drives the contextual banner.
+enum ManualSeedReason {
+    case autoFailed
+    case userChoseManual
+    case userRepick
+}
+
+/// Why processing is running. Drives the ProcessingView subtitle.
+enum ProcessingReason {
+    case initial
+    case reanalyze
+}
+
 struct ProcessedVideo: Identifiable {
     let id = UUID()
     let sourceURL: URL
@@ -42,6 +55,8 @@ final class AppState: ObservableObject {
     @Published var currentError: AppError?
     @Published var exportProgress: Double = 0
     @Published var traceStyle: TraceStyle = .glow
+    @Published var lastManualSeedReason: ManualSeedReason = .autoFailed
+    @Published var lastProcessingReason: ProcessingReason = .initial
 
     enum TraceStyle: String, CaseIterable {
         case dot = "Dot"
@@ -65,7 +80,8 @@ final class AppState: ObservableObject {
     /// `.awaitingManualSeed` if auto-detect can't find a ball — same behaviour
     /// as the import flow's auto path. Use this for both the initial import
     /// auto-detect and the result-screen "Re-analyze" action.
-    func runAutoPipeline(videoURL: URL) {
+    func runAutoPipeline(videoURL: URL, reason: ProcessingReason = .initial) {
+        lastProcessingReason = reason
         startProcessing(videoURL: videoURL)
         Task { await runDetectionPipeline(videoURL: videoURL) }
     }
@@ -109,7 +125,8 @@ final class AppState: ObservableObject {
         if confidence > 0 { detectionConfidence = confidence }
     }
 
-    func triggerManualSeed(videoURL: URL) {
+    func triggerManualSeed(videoURL: URL, reason: ManualSeedReason = .autoFailed) {
+        lastManualSeedReason = reason
         phase = .awaitingManualSeed(videoURL)
     }
 

@@ -28,6 +28,9 @@ struct ManualSelectView: View {
     var body: some View {
         VStack(spacing: 0) {
             navigationBar
+            if let banner = reasonBanner {
+                contextBanner(banner)
+            }
             frameViewer
                 .frame(maxHeight: .infinity)
             scrubber
@@ -36,6 +39,34 @@ struct ManualSelectView: View {
         }
         .background(Color.btBackground.ignoresSafeArea())
         .task { await setupPlayer() }
+    }
+
+    private var reasonBanner: String? {
+        switch appState.lastManualSeedReason {
+        case .autoFailed:
+            return "We couldn't find the ball automatically. Drag the marker onto it."
+        case .userRepick:
+            return "Pick the ball again — we'll re-trace from there."
+        case .userChoseManual:
+            return nil
+        }
+    }
+
+    private func contextBanner(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.btAccent)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundColor(.btTextSecondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.btSurface)
     }
 
     private var navigationBar: some View {
