@@ -1,12 +1,12 @@
 import SwiftUI
 import PhotosUI
+import AVFoundation
 
 struct HomeView: View {
     @EnvironmentObject var appState: AppState
-    @State private var showPhotoPicker = false
     @State private var logoPulsing = false
-    @State private var showImportError = false
     @State private var importedItem: PhotosPickerItem?
+    @State private var pendingImportURL: URL?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,6 +76,32 @@ struct HomeView: View {
             guard let item = newItem else { return }
             Task { await loadImportedVideo(item: item) }
         }
+        .confirmationDialog(
+            "How should we find the ball?",
+            isPresented: Binding(
+                get: { pendingImportURL != nil },
+                set: { if !$0 { pendingImportURL = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Auto-detect") {
+                guard let url = pendingImportURL else { return }
+                pendingImportURL = nil
+                importedItem = nil
+                appState.startProcessing(videoURL: url)
+                Task { await runDetectionPipeline(videoURL: url) }
+            }
+            Button("Pick frame manually") {
+                guard let url = pendingImportURL else { return }
+                pendingImportURL = nil
+                importedItem = nil
+                appState.triggerManualSeed(videoURL: url)
+            }
+            Button("Cancel", role: .cancel) {
+                pendingImportURL = nil
+                importedItem = nil
+            }
+        }
     }
 
     private func loadImportedVideo(item: PhotosPickerItem) async {
@@ -84,8 +110,7 @@ struct HomeView: View {
                 appState.setError(.importFailed(underlying: URLError(.cannotOpenFile)))
                 return
             }
-            appState.startProcessing(videoURL: url.url)
-            await runDetectionPipeline(videoURL: url.url)
+            pendingImportURL = url.url
         } catch {
             appState.setError(.importFailed(underlying: error))
         }
