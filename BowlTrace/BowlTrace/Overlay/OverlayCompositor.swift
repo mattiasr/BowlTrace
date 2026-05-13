@@ -1,4 +1,5 @@
 import CoreImage
+import CoreImage.CIFilterBuiltins
 import AVFoundation
 
 struct OverlayCompositor {
