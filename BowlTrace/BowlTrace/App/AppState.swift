@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import CoreGraphics
 
 enum AppPhase {
     case idle
@@ -57,6 +58,49 @@ final class AppState: ObservableObject {
         detectionConfidence = 0
         processingStage = .readingFrames
         phase = .processing(.readingFrames)
+    }
+
+    /// Runs the full auto-detect + track pipeline on the given video, then
+    /// transitions to `.previewing` on success. Falls back to
+    /// `.awaitingManualSeed` if auto-detect can't find a ball — same behaviour
+    /// as the import flow's auto path. Use this for both the initial import
+    /// auto-detect and the result-screen "Re-analyze" action.
+    func runAutoPipeline(videoURL: URL) {
+        startProcessing(videoURL: videoURL)
+        Task { await runDetectionPipeline(videoURL: videoURL) }
+    }
+
+    private func runDetectionPipeline(videoURL: URL) async {
+        let detector = BallDetector()
+        do {
+            updateProgress(0.1, stage: .readingFrames)
+            let asset = try await VideoAsset.load(from: videoURL)
+
+            updateProgress(0.3, stage: .locatingBall)
+            guard let seedRect = try await detector.detect(in: AVURLAsset(url: asset.url)) else {
+                triggerManualSeed(videoURL: videoURL)
+                return
+            }
+
+            updateProgress(0.5, stage: .mappingTrajectory, confidence: 0.85)
+            let tracker = BallTracker()
+            let trajectory = try await tracker.track(
+                in: AVURLAsset(url: asset.url),
+                seedRect: seedRect,
+                videoSize: asset.naturalSize,
+                progressHandler: { progress in
+                    Task { @MainActor [weak self] in
+                        self?.updateProgress(0.5 + progress * 0.45, stage: .mappingTrajectory)
+                    }
+                }
+            )
+
+            updateProgress(1.0, stage: .finishing)
+            try await Task.sleep(nanoseconds: 300_000_000)
+            finishProcessing(trajectory: trajectory, sourceURL: videoURL)
+        } catch {
+            setError(.importFailed(underlying: error))
+        }
     }
 
     func updateProgress(_ progress: Double, stage: ProcessingStage, confidence: Float = 0) {

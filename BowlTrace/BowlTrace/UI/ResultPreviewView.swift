@@ -50,8 +50,11 @@ struct ResultPreviewView: View {
 
             Menu {
                 Button("Share", systemImage: "square.and.arrow.up") { triggerShare() }
+                Button("Re-pick ball", systemImage: "scope") {
+                    appState.triggerManualSeed(videoURL: video.sourceURL)
+                }
                 Button("Re-analyze", systemImage: "arrow.clockwise") {
-                    appState.startProcessing(videoURL: video.sourceURL)
+                    appState.runAutoPipeline(videoURL: video.sourceURL)
                 }
                 Button("Delete", systemImage: "trash", role: .destructive) { appState.reset() }
             } label: {
