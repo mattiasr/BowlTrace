@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# CoreML model artifacts — downloaded per-clone via Scripts/download-model.py
+BowlTrace/BowlTrace/Resources/BallDetector.mlmodel
+BowlTrace/BowlTrace/Resources/BallDetector.mlmodelc/
+BowlTrace/BowlTrace/Resources/BallDetector.mlpackage/
+
+# Python virtualenvs used by Scripts/
+.venv/
+venv/
+__pycache__/
+*.pyc

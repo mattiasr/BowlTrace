@@ -4,8 +4,17 @@ import CoreImage
 
 actor BallDetector {
     private let heuristic = CircleHeuristic()
+    private let mlDetector: MLBallDetector
     private let sampleFrameCount = 15
-    private let confidenceThreshold: Float = 0.45
+    private let heuristicConfidenceThreshold: Float = 0.45
+    /// Confidence required for an ML detection to be returned as the seed.
+    /// Higher than the per-frame tracker anchor threshold because the seed
+    /// drives the entire downstream trajectory.
+    private static let mlSeedConfidenceThreshold: Float = 0.4
+
+    init() {
+        self.mlDetector = MLBallDetector(confidenceThreshold: Self.mlSeedConfidenceThreshold)
+    }
 
     func detect(in asset: AVURLAsset) async throws -> CGRect? {
         let duration = try await asset.load(.duration)
@@ -13,6 +22,29 @@ actor BallDetector {
 
         let frames = try await extractFrames(from: asset, count: sampleFrameCount)
 
+        // Pass 1: try the ML detector. Picks the most confident detection across
+        // sampled frames; bails early on a strong hit. No-ops cheaply when the
+        // model isn't bundled.
+        if mlDetector.isAvailable {
+            var bestMLRect: CGRect?
+            var bestMLArea: CGFloat = 0
+            for pixelBuffer in frames {
+                if let rect = mlDetector.detect(in: pixelBuffer) {
+                    // Prefer the largest valid hit — closer balls give the tracker
+                    // a more stable seed than tiny far-away ones.
+                    let area = rect.width * rect.height
+                    if area > bestMLArea {
+                        bestMLArea = area
+                        bestMLRect = rect
+                    }
+                }
+            }
+            if let bestMLRect {
+                return bestMLRect
+            }
+        }
+
+        // Pass 2: contour-based circle heuristic fallback.
         var bestCandidate: CircleCandidate?
         var bestConfidence: Float = 0
 
@@ -25,7 +57,7 @@ actor BallDetector {
             if bestConfidence > 0.80 { break }
         }
 
-        guard let candidate = bestCandidate, candidate.confidence > confidenceThreshold else {
+        guard let candidate = bestCandidate, candidate.confidence > heuristicConfidenceThreshold else {
             return nil
         }
 

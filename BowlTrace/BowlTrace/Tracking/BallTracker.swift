@@ -7,6 +7,18 @@ actor BallTracker {
     private let maxFrameGap = 5
     private let smoothingAlpha: Double = 0.4
 
+    /// Re-anchor the VNTrackObjectRequest with a fresh ML detection every Nth
+    /// frame so the tracker doesn't drift over long videos.
+    private let mlAnchorInterval = 8
+
+    /// Maximum normalized distance between the predicted next position and an
+    /// ML detection for that detection to be accepted as the same ball.
+    /// 0.15 ≈ 15% of frame width — generous enough to cover a fast roll between
+    /// anchor frames but tight enough to reject other balls/pins on the lane.
+    private let mlAnchorMaxDistance: CGFloat = 0.15
+
+    private let mlDetector = MLBallDetector(confidenceThreshold: 0.5)
+
     func track(
         in asset: AVURLAsset,
         seedRect: CGRect,
@@ -21,8 +33,10 @@ actor BallTracker {
         var trajectory = TrajectoryModel(videoSize: videoSize)
         let sequenceHandler = VNSequenceRequestHandler()
         var lastObservation: VNDetectedObjectObservation? = VNDetectedObjectObservation(boundingBox: seedRect)
+        var previousCenter: CGPoint? = CGPoint(x: seedRect.midX, y: seedRect.midY)
         var frameIndex = 0
         var lowConfidenceStreak = 0
+        let mlAvailable = mlDetector.isAvailable
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
@@ -57,9 +71,30 @@ actor BallTracker {
                         confidence: result.confidence
                     )
                     trajectory.points.append(point)
+                    previousCenter = center
                 } else {
                     lowConfidenceStreak += 1
                     if lowConfidenceStreak >= lowConfidenceLimit { break }
+                }
+            }
+
+            // Periodic ML re-anchor. The detector is a no-op when the model
+            // isn't bundled, so `mlAvailable` short-circuits the per-frame work.
+            if mlAvailable, frameIndex > 0, frameIndex % mlAnchorInterval == 0 {
+                if let mlRect = mlDetector.detect(in: pixelBuffer) {
+                    let mlCenter = CGPoint(x: mlRect.midX, y: mlRect.midY)
+                    let accept: Bool
+                    if let predicted = predictedNextCenter(history: trajectory.points,
+                                                          fallback: previousCenter) {
+                        accept = distance(predicted, mlCenter) <= mlAnchorMaxDistance
+                    } else {
+                        // No prior history — trust the ML detection.
+                        accept = true
+                    }
+                    if accept {
+                        lastObservation = VNDetectedObjectObservation(boundingBox: mlRect)
+                        previousCenter = mlCenter
+                    }
                 }
             }
 
@@ -76,6 +111,28 @@ actor BallTracker {
         trajectory.points = smooth(trajectory.points)
         return trajectory
     }
+
+    // MARK: - ML anchor helpers
+
+    /// Linear extrapolation of the next position from the last two observed centers.
+    /// Falls back to the most recent center (or `fallback`) when history is too short.
+    private func predictedNextCenter(history: [TrajectoryPoint], fallback: CGPoint?) -> CGPoint? {
+        if history.count >= 2 {
+            let a = history[history.count - 2].normalizedCenter
+            let b = history[history.count - 1].normalizedCenter
+            return CGPoint(x: b.x + (b.x - a.x), y: b.y + (b.y - a.y))
+        }
+        if let last = history.last?.normalizedCenter { return last }
+        return fallback
+    }
+
+    private func distance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+        let dx = a.x - b.x
+        let dy = a.y - b.y
+        return sqrt(dx * dx + dy * dy)
+    }
+
+    // MARK: - Smoothing pipeline
 
     private func medianFilter(_ points: [TrajectoryPoint]) -> [TrajectoryPoint] {
         guard points.count >= 3 else { return points }
