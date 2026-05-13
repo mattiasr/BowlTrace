@@ -17,6 +17,7 @@
 		CC000000000000000000CC08 /* VideoImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB08; };
 		CC000000000000000000CC09 /* BallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB09; };
 		CC000000000000000000CC0A /* CircleHeuristic.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0A; };
+		CC000000000000000000CC1D /* MLBallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB1D; };
 		CC000000000000000000CC0B /* TrajectoryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0B; };
 		CC000000000000000000CC0C /* FrameProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0C; };
 		CC000000000000000000CC0D /* BallTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0D; };
@@ -46,6 +47,7 @@
 		BB000000000000000000BB08 /* VideoImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoImporter.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB09 /* BallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallDetector.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB0A /* CircleHeuristic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleHeuristic.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB1D /* MLBallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLBallDetector.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB0B /* TrajectoryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrajectoryModel.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB0C /* FrameProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameProcessor.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB0D /* BallTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTracker.swift; sourceTree = "<group>"; };
@@ -153,6 +155,7 @@
 			children = (
 				BB000000000000000000BB09 /* BallDetector.swift */,
 				BB000000000000000000BB0A /* CircleHeuristic.swift */,
+				BB000000000000000000BB1D /* MLBallDetector.swift */,
 			);
 			path = Detection;
 			sourceTree = "<group>";
@@ -294,6 +297,7 @@
 				CC000000000000000000CC08 /* VideoImporter.swift in Sources */,
 				CC000000000000000000CC09 /* BallDetector.swift in Sources */,
 				CC000000000000000000CC0A /* CircleHeuristic.swift in Sources */,
+				CC000000000000000000CC1D /* MLBallDetector.swift in Sources */,
 				CC000000000000000000CC0B /* TrajectoryModel.swift in Sources */,
 				CC000000000000000000CC0C /* FrameProcessor.swift in Sources */,
 				CC000000000000000000CC0D /* BallTracker.swift in Sources */,
