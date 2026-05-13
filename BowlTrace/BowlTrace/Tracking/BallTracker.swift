@@ -2,9 +2,10 @@ import AVFoundation
 import Vision
 
 actor BallTracker {
-    private let confidenceThreshold: Float = 0.3
+    private let confidenceThreshold: Float = 0.25
     private let lowConfidenceLimit = 5
     private let maxFrameGap = 5
+    private let smoothingAlpha: Double = 0.4
 
     func track(
         in asset: AVURLAsset,
@@ -40,9 +41,10 @@ actor BallTracker {
             try? sequenceHandler.perform([request], on: pixelBuffer)
 
             if let result = request.results?.first as? VNDetectedObjectObservation {
+                // Always advance the tracker so it doesn't get stuck on a stale seed
+                lastObservation = result
                 if result.confidence >= confidenceThreshold {
                     lowConfidenceStreak = 0
-                    lastObservation = result
 
                     let center = CGPoint(
                         x: result.boundingBox.midX,
@@ -70,7 +72,57 @@ actor BallTracker {
 
         reader.cancelReading()
         trajectory.points = interpolateGaps(trajectory.points)
+        trajectory.points = medianFilter(trajectory.points)
+        trajectory.points = smooth(trajectory.points)
         return trajectory
+    }
+
+    private func medianFilter(_ points: [TrajectoryPoint]) -> [TrajectoryPoint] {
+        guard points.count >= 3 else { return points }
+        var result = points
+        for i in 1..<points.count - 1 {
+            let xs = [points[i-1].normalizedCenter.x,
+                      points[i].normalizedCenter.x,
+                      points[i+1].normalizedCenter.x].sorted()
+            let ys = [points[i-1].normalizedCenter.y,
+                      points[i].normalizedCenter.y,
+                      points[i+1].normalizedCenter.y].sorted()
+            result[i] = TrajectoryPoint(
+                frameIndex: points[i].frameIndex,
+                timestamp: CMTime(seconds: points[i].timestamp, preferredTimescale: 600),
+                normalizedCenter: CGPoint(x: xs[1], y: ys[1]),
+                confidence: points[i].confidence
+            )
+        }
+        return result
+    }
+
+    // Zero-phase EMA: forward then backward pass averages out the lag.
+    private func smooth(_ points: [TrajectoryPoint]) -> [TrajectoryPoint] {
+        guard points.count >= 3 else { return points }
+        var centers = points.map { $0.normalizedCenter }
+
+        for i in 1..<centers.count {
+            centers[i] = CGPoint(
+                x: smoothingAlpha * centers[i].x + (1 - smoothingAlpha) * centers[i-1].x,
+                y: smoothingAlpha * centers[i].y + (1 - smoothingAlpha) * centers[i-1].y
+            )
+        }
+        for i in (0..<centers.count - 1).reversed() {
+            centers[i] = CGPoint(
+                x: smoothingAlpha * centers[i].x + (1 - smoothingAlpha) * centers[i+1].x,
+                y: smoothingAlpha * centers[i].y + (1 - smoothingAlpha) * centers[i+1].y
+            )
+        }
+
+        return points.enumerated().map { i, p in
+            TrajectoryPoint(
+                frameIndex: p.frameIndex,
+                timestamp: CMTime(seconds: p.timestamp, preferredTimescale: 600),
+                normalizedCenter: centers[i],
+                confidence: p.confidence
+            )
+        }
     }
 
     private func interpolateGaps(_ points: [TrajectoryPoint]) -> [TrajectoryPoint] {

@@ -18,9 +18,8 @@ struct ManualSelectView: View {
     var body: some View {
         VStack(spacing: 0) {
             navigationBar
-            Spacer(minLength: 0)
             frameViewer
-            Spacer(minLength: 0)
+                .frame(maxHeight: .infinity)
             scrubber
             stepButtons
             Spacer(minLength: 16)
@@ -74,9 +73,15 @@ struct ManualSelectView: View {
                 ProgressView().tint(Color.btAccent)
             }
         }
-        .aspectRatio(16/9, contentMode: .fit)
+        .aspectRatio(frameAspect, contentMode: .fit)
         .cornerRadius(14)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+
+    private var frameAspect: CGFloat {
+        guard videoSize.height > 0 else { return 16.0/9.0 }
+        return videoSize.width / videoSize.height
     }
 
     private var scrubber: some View {

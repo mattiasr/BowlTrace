@@ -78,7 +78,7 @@ struct ResultPreviewView: View {
                 Canvas { context, size in
                     let bounds = CGRect(origin: .zero, size: size)
                     let path = video.trajectory.uiKitPath(in: bounds)
-                    drawTrace(path: path, context: &context, style: appState.traceStyle)
+                    drawTrace(path: path, context: &context, size: size, style: appState.traceStyle)
 
                     // Animated ball dot
                     if let center = video.trajectory.point(atFraction: playerProgress) {
@@ -91,21 +91,26 @@ struct ResultPreviewView: View {
                 .allowsHitTesting(false)
             }
         }
-        .aspectRatio(16/9, contentMode: .fit)
+        .aspectRatio(videoAspect, contentMode: .fit)
         .cornerRadius(14)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
         .padding(.top, 4)
     }
 
-    private func drawTrace(path: UIBezierPath, context: inout GraphicsContext, style: AppState.TraceStyle) {
+    private var videoAspect: CGFloat {
+        let size = video.trajectory.videoSize
+        guard size.height > 0 else { return 16.0/9.0 }
+        return size.width / size.height
+    }
+
+    private func drawTrace(path: UIBezierPath, context: inout GraphicsContext, size: CGSize, style: AppState.TraceStyle) {
         let swiftuiPath = Path(path.cgPath)
         switch style {
         case .dot:
-            // Dots drawn per point
             for point in video.trajectory.points {
-                let px = point.normalizedCenter.x
-                let py = 1.0 - point.normalizedCenter.y
-                let circle = Path(ellipseIn: CGRect(x: px * 390 - 4, y: py * 220 - 4, width: 8, height: 8))
+                let px = point.normalizedCenter.x * size.width
+                let py = (1.0 - point.normalizedCenter.y) * size.height
+                let circle = Path(ellipseIn: CGRect(x: px - 4, y: py - 4, width: 8, height: 8))
                 context.fill(circle, with: .color(Color.btAccent.opacity(0.8)))
             }
         case .line:
