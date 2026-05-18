@@ -76,44 +76,59 @@ actor BallTracker {
         // tracked frame so it adapts to lighting along the lane.
         var refColor: SIMD3<Float>? = referenceColor
 
-        // Camera-motion stabilization: accumulate H_{i→0} via Vision's
-        // translational registration between consecutive frames. Stored on
-        // `trajectory.frameHomographies` so the renderer can keep the
-        // trace anchored to the lane while the camera pans.
+        // Camera-motion stabilization via explicit gutter tracking. Vision's
+        // built-in registration (homographic and translational) failed on
+        // these clips — the lane surface is too uniform for its general
+        // feature matcher, so the returned per-frame translations were
+        // ~zero and the trace drifted along with the camera. The gutters
+        // are the strongest static features in the frame, so we find them
+        // by hand each frame and use their X shift as the camera pan.
+        //
+        // Algorithm per frame:
+        //   1. Apply a Sobel-X kernel to the display-oriented frame to
+        //      highlight vertical features.
+        //   2. Crop to a thin horizontal strip of the lane.
+        //   3. Render the strip to a low-res grayscale-ish buffer.
+        //   4. Sum |edge magnitude| per column.
+        //   5. Pick the strongest peak in the left half and right half
+        //      of the strip — these are the gutter inner edges.
+        //   6. Between consecutive frames, mean(prev - curr) of the two
+        //      gutter X positions is the per-frame camera pan in pixels.
+        //
+        // Only X translation is computed — Y motion on these clips is
+        // negligible compared to pan and would need a separate detector
+        // (foul line / pin deck) which we can add later if needed.
         var frameHomographies: [simd_float3x3] = []
         var accumulatedH = matrix_identity_float3x3
-        var previousStabPB: CVPixelBuffer?
-
-        // Stabilization crop: feed Vision only the lane region so it locks
-        // onto gutters and lane structure instead of the bowler. In display
-        // orientation: bottom of frame = bowler/foul line, top = pins.
-        // Drop the bottom 30% (bowler), top 5% (pin chaos), and a sliver on
-        // each side. CIImage uses bottom-left origin so origin.y is measured
-        // from the bottom.
-        let stabCropRect = CGRect(
-            x: videoSize.width * 0.05,
-            y: videoSize.height * 0.30,
-            width: videoSize.width * 0.90,
-            height: videoSize.height * 0.65
-        )
-        let stabW = Int(stabCropRect.width.rounded())
-        let stabH = Int(stabCropRect.height.rounded())
-
-        // Materialize cropped lane frames into a zero-origin CVPixelBuffer
-        // pool. Passing a `.cropped(to:)` CIImage directly into Vision was
-        // unreliable — Vision either read uncropped pixels or returned
-        // near-identity translations, so stabilization was effectively a
-        // no-op. A concrete CVPixelBuffer with origin (0, 0) removes the
-        // ambiguity. CIContext is reused across frames.
         let stabCIContext = CIContext(options: [.useSoftwareRenderer: false])
-        var stabPool: CVPixelBufferPool?
-        let pixBufAttrs: [String: Any] = [
+
+        // Strip sampled in display Vision-norm (bottom-left origin). The
+        // bowler usually fills the center of the bottom of the frame but
+        // doesn't reach the gutter X positions, so we can sample lower
+        // than the previous bowler-crop without contamination — the lower
+        // we go, the wider apart the gutters are, the more dominant their
+        // edges are.
+        let stripVisionYRange: ClosedRange<CGFloat> = 0.20...0.45
+        let stripPixelW = min(Int(videoSize.width), 480)
+        let stripPixelH = 24
+        var stripPool: CVPixelBufferPool?
+        let stripAttrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
-            kCVPixelBufferWidthKey as String: stabW,
-            kCVPixelBufferHeightKey as String: stabH,
+            kCVPixelBufferWidthKey as String: stripPixelW,
+            kCVPixelBufferHeightKey as String: stripPixelH,
             kCVPixelBufferIOSurfacePropertiesKey as String: [:]
         ]
-        CVPixelBufferPoolCreate(nil, nil, pixBufAttrs as CFDictionary, &stabPool)
+        CVPixelBufferPoolCreate(nil, nil, stripAttrs as CFDictionary, &stripPool)
+
+        // Sobel-X kernel detects vertical features (horizontal gradient).
+        // Bias 0.5 keeps signed responses within 8-bit BGRA range; we
+        // recover magnitude as |g - 128| when reading pixels.
+        let sobelWeights = CIVector(values: [-1, 0, 1, -2, 0, 2, -1, 0, 1], count: 9)
+
+        // Gutter X positions of the previous frame in display Vision-norm,
+        // and a small "skipped frames" budget so a single dropped frame
+        // doesn't break the stabilization chain.
+        var previousGutters: (left: CGFloat, right: CGFloat)?
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
@@ -123,53 +138,41 @@ actor BallTracker {
                 continue
             }
 
-            // Camera-motion stabilization: rotate to display orientation,
-            // crop to the lane region (bowler excluded), render to a
-            // zero-origin CVPixelBuffer, then run translational
-            // registration. The bowler walks/swings independently of the
-            // camera — with him in frame he dominates feature matching and
-            // Vision reports his motion as camera motion. Cropping to the
-            // lane forces Vision to lock onto gutters and lane structure,
-            // which are physically static. Per-frame pixel translation in
-            // the crop equals the full-frame translation (crop origin
-            // cancels in the delta), so tx/ty go straight into H_{i→0}.
-            var stabPB: CVPixelBuffer?
-            if let pool = stabPool {
-                CVPixelBufferPoolCreatePixelBuffer(nil, pool, &stabPB)
-            }
-            if let stabPB {
-                let oriented = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
-                let rebased = oriented
-                    .cropped(to: stabCropRect)
-                    .transformed(by: CGAffineTransform(translationX: -stabCropRect.minX,
-                                                       y: -stabCropRect.minY))
-                stabCIContext.render(rebased, to: stabPB)
-
-                if let prev = previousStabPB {
-                    let registration = VNTranslationalImageRegistrationRequest(
-                        targetedCVPixelBuffer: prev,
-                        options: [:]
-                    )
-                    let handler = VNImageRequestHandler(cvPixelBuffer: stabPB, options: [:])
-                    if (try? handler.perform([registration])) != nil,
-                       let result = registration.results?.first as? VNImageTranslationAlignmentObservation {
-                        let cg = result.alignmentTransform
-                        // Sanity gate: a per-frame translation > 25% of
-                        // either dimension is almost certainly noise. Drop.
-                        let maxStepFrac: CGFloat = 0.25
-                        let stepOK = abs(cg.tx) < videoSize.width * maxStepFrac
-                                  && abs(cg.ty) < videoSize.height * maxStepFrac
-                        if stepOK {
-                            let stepM = simd_float3x3(
-                                SIMD3<Float>(1, 0, 0),
-                                SIMD3<Float>(0, 1, 0),
-                                SIMD3<Float>(Float(cg.tx), Float(cg.ty), 1)
-                            )
-                            accumulatedH = accumulatedH * stepM
-                        }
+            // Explicit gutter-based stabilization (see block comment above
+            // the loop). detectGutterXs returns nil when there's no clear
+            // pair of peaks (e.g. extreme zoom, gutters off-frame); in
+            // that case we leave accumulatedH unchanged for this frame so
+            // the chain survives short detection gaps.
+            if let gutters = detectGutterXs(
+                in: pixelBuffer,
+                orientation: orientation,
+                videoSize: videoSize,
+                stripVisionYRange: stripVisionYRange,
+                stripPixelW: stripPixelW,
+                stripPixelH: stripPixelH,
+                sobelWeights: sobelWeights,
+                stripPool: stripPool,
+                ciContext: stabCIContext
+            ) {
+                if let prev = previousGutters {
+                    // Camera right pan → gutters shift left in the image
+                    // → curr < prev → (prev - curr) > 0. That's the
+                    // positive translation we need to map current-frame
+                    // points back into the previous frame's coord system.
+                    let dxLeft = (prev.left - gutters.left) * videoSize.width
+                    let dxRight = (prev.right - gutters.right) * videoSize.width
+                    let dx = (dxLeft + dxRight) / 2
+                    let maxStepFrac: CGFloat = 0.25
+                    if abs(dx) < videoSize.width * maxStepFrac {
+                        let stepM = simd_float3x3(
+                            SIMD3<Float>(1, 0, 0),
+                            SIMD3<Float>(0, 1, 0),
+                            SIMD3<Float>(Float(dx), 0, 1)
+                        )
+                        accumulatedH = accumulatedH * stepM
                     }
                 }
-                previousStabPB = stabPB
+                previousGutters = gutters
             }
             frameHomographies.append(accumulatedH)
 
@@ -437,5 +440,100 @@ actor BallTracker {
         }
         result.append(points.last!)
         return result
+    }
+
+    // MARK: - Gutter-based camera-motion estimation
+
+    /// Returns the X positions (display Vision-norm, [0, 1]) of the inner
+    /// edges of the left and right lane gutters, or nil if both edges
+    /// can't be confidently identified. Used by the per-frame stabilization
+    /// step in `track(...)`.
+    ///
+    /// How it works:
+    ///   • Rotate the source buffer to display orientation.
+    ///   • Apply a Sobel-X convolution to highlight vertical edges.
+    ///   • Crop to a thin horizontal strip across the lane (one in display
+    ///     Vision-norm so the same band is sampled every frame).
+    ///   • Render the strip down to a low-res BGRA buffer.
+    ///   • Sum |G - 128| per column — Sobel-X is biased to 0.5 in the
+    ///     CIFilter so positive and negative edge responses both deviate
+    ///     from the neutral 128 byte value.
+    ///   • Pick the strongest column in the left half and right half.
+    ///   • Reject when either peak is less than 2× the median column
+    ///     strength (no clear gutters in view).
+    private func detectGutterXs(in pixelBuffer: CVPixelBuffer,
+                                orientation: CGImagePropertyOrientation,
+                                videoSize: CGSize,
+                                stripVisionYRange: ClosedRange<CGFloat>,
+                                stripPixelW: Int,
+                                stripPixelH: Int,
+                                sobelWeights: CIVector,
+                                stripPool: CVPixelBufferPool?,
+                                ciContext: CIContext) -> (left: CGFloat, right: CGFloat)? {
+        guard let pool = stripPool else { return nil }
+
+        let oriented = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
+        let sobeled = oriented.applyingFilter("CIConvolution3X3", parameters: [
+            "inputWeights": sobelWeights,
+            "inputBias": 0.5
+        ])
+
+        let stripY0 = videoSize.height * stripVisionYRange.lowerBound
+        let stripH = videoSize.height * (stripVisionYRange.upperBound - stripVisionYRange.lowerBound)
+        let stripRect = CGRect(x: 0, y: stripY0, width: videoSize.width, height: stripH)
+
+        let cropped = sobeled
+            .cropped(to: stripRect)
+            .transformed(by: CGAffineTransform(translationX: -stripRect.minX,
+                                               y: -stripRect.minY))
+        let scaleX = CGFloat(stripPixelW) / stripRect.width
+        let scaleY = CGFloat(stripPixelH) / stripRect.height
+        let scaled = cropped.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+
+        var pb: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pb)
+        guard let pb else { return nil }
+        ciContext.render(scaled, to: pb)
+
+        CVPixelBufferLockBaseAddress(pb, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(pb) else { return nil }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pb)
+        let ptr = base.assumingMemoryBound(to: UInt8.self)
+        let W = stripPixelW
+        let H = stripPixelH
+
+        // Per-column sum of |G - 128|. BGRA: green is byte offset 1.
+        var colSum = [Int](repeating: 0, count: W)
+        for y in 0..<H {
+            let row = y * bytesPerRow
+            for x in 0..<W {
+                let g = Int(ptr[row + x * 4 + 1])
+                colSum[x] += abs(g - 128)
+            }
+        }
+
+        // Peak in each half.
+        let half = W / 2
+        var leftBestX = 0, leftBestV = 0
+        for x in 0..<half {
+            if colSum[x] > leftBestV { leftBestV = colSum[x]; leftBestX = x }
+        }
+        var rightBestX = half, rightBestV = 0
+        for x in half..<W {
+            if colSum[x] > rightBestV { rightBestV = colSum[x]; rightBestX = x }
+        }
+
+        // Confidence gate: both peaks must rise meaningfully above the
+        // typical column. Median ensures noise alone never qualifies.
+        let median = colSum.sorted()[W / 2]
+        guard median > 0, leftBestV > median * 2, rightBestV > median * 2 else {
+            return nil
+        }
+
+        return (
+            left: CGFloat(leftBestX) / CGFloat(W),
+            right: CGFloat(rightBestX) / CGFloat(W)
+        )
     }
 }
