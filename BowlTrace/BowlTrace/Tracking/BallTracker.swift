@@ -118,7 +118,7 @@ actor BallTracker {
                                                     orientation: orientation,
                                                     options: [:])
                 if (try? handler.perform([registration])) != nil,
-                   let result = registration.results?.first as? VNImageTranslationalAlignmentObservation {
+                   let result = registration.results?.first as? VNImageTranslationAlignmentObservation {
                     let cg = result.alignmentTransform
                     // Sanity gate: a single-frame translation > 25% of either
                     // dimension is almost certainly noise (registration locked
