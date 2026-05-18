@@ -91,16 +91,25 @@ actor BallTracker {
                 continue
             }
 
-            // Compute frame-to-frame homography for EVERY frame (including
+            // Compute frame-to-frame translation for EVERY frame (including
             // pre-seed frames) so the renderer has a complete H_{i→0}
-            // series. The bowler's body is an outlier minority on a wide
-            // bowling-alley shot — Vision's RANSAC locks onto the static
-            // background, giving us camera-motion compensation for free.
+            // series. We use `VNTranslationalImageRegistrationRequest` rather
+            // than the homographic variant because:
+            //   • The lane is mostly featureless — RANSAC inside
+            //     VNHomographicImageRegistrationRequest often fails or locks
+            //     onto the bowler/pins, returning garbage homographies.
+            //   • Handheld camera motion on these clips is dominated by pan
+            //     and shake — pure translation captures it well, and the
+            //     trade-off (no rotation / zoom compensation) is acceptable.
+            //   • The returned CGAffineTransform is unambiguously in pixel
+            //     space, which removes the documentation ambiguity around
+            //     `warpTransform`'s coordinate convention.
+            //
+            // Both buffers are reported with the same orientation so the
+            // translation lives in display-pixel space — matching the
+            // trajectory points and the renderer canvas.
             if let prev = previousPB {
-                // Both buffers must be reported with the same orientation so
-                // the resulting homography lives in display-pixel space —
-                // matching the trajectory points and the renderer's canvas.
-                let registration = VNHomographicImageRegistrationRequest(
+                let registration = VNTranslationalImageRegistrationRequest(
                     targetedCVPixelBuffer: prev,
                     orientation: orientation,
                     options: [:]
@@ -109,8 +118,24 @@ actor BallTracker {
                                                     orientation: orientation,
                                                     options: [:])
                 if (try? handler.perform([registration])) != nil,
-                   let result = registration.results?.first as? VNImageHomographicAlignmentObservation {
-                    accumulatedH = accumulatedH * result.warpTransform
+                   let result = registration.results?.first as? VNImageTranslationalAlignmentObservation {
+                    let cg = result.alignmentTransform
+                    // Sanity gate: a single-frame translation > 25% of either
+                    // dimension is almost certainly noise (registration locked
+                    // onto a moving subject instead of the background). Drop
+                    // that step — treat it as identity — rather than letting
+                    // bad data poison the accumulated H_{i→0}.
+                    let maxStepFrac: CGFloat = 0.25
+                    let stepOK = abs(cg.tx) < videoSize.width * maxStepFrac
+                              && abs(cg.ty) < videoSize.height * maxStepFrac
+                    if stepOK {
+                        let stepM = simd_float3x3(
+                            SIMD3<Float>(1, 0, 0),
+                            SIMD3<Float>(0, 1, 0),
+                            SIMD3<Float>(Float(cg.tx), Float(cg.ty), 1)
+                        )
+                        accumulatedH = accumulatedH * stepM
+                    }
                 }
             }
             frameHomographies.append(accumulatedH)
