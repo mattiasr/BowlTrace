@@ -109,8 +109,13 @@ actor BallTracker {
         // we go, the wider apart the gutters are, the more dominant their
         // edges are.
         let stripVisionYRange: ClosedRange<CGFloat> = 0.20...0.45
-        let stripPixelW = min(Int(videoSize.width), 480)
-        let stripPixelH = 24
+        // Render the strip at full source resolution so the Sobel peak's
+        // column index isn't bottlenecked by downsampling. Capping at 1080
+        // covers all reasonable iPhone display widths; we don't pay much
+        // for the extra columns since per-frame work is a single linear
+        // pass over the buffer.
+        let stripPixelW = min(Int(videoSize.width), 1080)
+        let stripPixelH = 32
         var stripPool: CVPixelBufferPool?
         let stripAttrs: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
