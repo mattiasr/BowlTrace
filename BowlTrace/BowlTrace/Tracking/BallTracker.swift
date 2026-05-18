@@ -536,13 +536,15 @@ actor BallTracker {
             return nil
         }
 
-        // Sub-pixel refinement: fit a parabola through (peakIdx-1, peak,
-        // peakIdx+1) and find the analytic maximum. Without this the peak
-        // column is quantized to integer X — camera pans of, say, 1.6 px
-        // per frame round to 1 or 2 px and the accumulated error shows up
-        // as a residual drift in the same direction as the pan.
-        let leftRefined = parabolicSubpixelPeak(in: colSum, around: leftBestX)
-        let rightRefined = parabolicSubpixelPeak(in: colSum, around: rightBestX)
+        // Sub-pixel refinement via weighted centroid over a 9-column window
+        // around the integer peak. Centroid is more robust than 3-sample
+        // parabolic interpolation when the peak is asymmetric — and gutter
+        // edges typically are (different gradient on the wood-frame side
+        // vs the lane-surface side). Baseline subtraction (clip at local
+        // min) keeps the centroid weighted by the peak region itself, not
+        // by overall background brightness.
+        let leftRefined = centroidSubpixelPeak(in: colSum, around: leftBestX)
+        let rightRefined = centroidSubpixelPeak(in: colSum, around: rightBestX)
 
         return (
             left: leftRefined / CGFloat(W),
@@ -550,21 +552,24 @@ actor BallTracker {
         )
     }
 
-    /// Parabolic interpolation around a discrete peak: fits `y = a(x - p)² + c`
-    /// through three samples centred on `peakIdx` and returns the sub-pixel
-    /// X of the analytic maximum. Falls back to the integer index at the
-    /// array boundary or when the curvature is degenerate.
-    private func parabolicSubpixelPeak(in values: [Int], around peakIdx: Int) -> CGFloat {
-        guard peakIdx > 0, peakIdx < values.count - 1 else { return CGFloat(peakIdx) }
-        let y0 = Double(values[peakIdx - 1])
-        let y1 = Double(values[peakIdx])
-        let y2 = Double(values[peakIdx + 1])
-        let denom = 2 * (2 * y1 - y0 - y2)
-        guard abs(denom) > 1e-6 else { return CGFloat(peakIdx) }
-        let offset = (y0 - y2) / denom
-        // Clamp offset to [-1, 1] in case the three samples are nearly
-        // collinear and `offset` blows up.
-        let clamped = max(-1.0, min(1.0, offset))
-        return CGFloat(peakIdx) + CGFloat(clamped)
+    /// Weighted centroid of `values` in a window of radius 4 around
+    /// `peakIdx`, after subtracting the local minimum so the centroid
+    /// reflects the peak region only. Handles asymmetric peaks better than
+    /// 3-sample parabolic fits, at no meaningful runtime cost.
+    private func centroidSubpixelPeak(in values: [Int], around peakIdx: Int) -> CGFloat {
+        let radius = 4
+        let lo = max(0, peakIdx - radius)
+        let hi = min(values.count - 1, peakIdx + radius)
+        guard hi > lo else { return CGFloat(peakIdx) }
+        let localMin = values[lo...hi].min() ?? 0
+        var sumXV: Double = 0
+        var sumV: Double = 0
+        for x in lo...hi {
+            let v = Double(max(0, values[x] - localMin))
+            sumXV += Double(x) * v
+            sumV += v
+        }
+        guard sumV > 0 else { return CGFloat(peakIdx) }
+        return CGFloat(sumXV / sumV)
     }
 }
