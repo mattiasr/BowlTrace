@@ -142,7 +142,7 @@ struct ResultPreviewView: View {
         let swiftuiPath = Path(path.cgPath)
         switch style {
         case .dot:
-            for point in video.trajectory.points {
+            for point in video.trajectory.visiblePoints(upToFrameIndex: frameIndex) {
                 let stable = video.trajectory.stabilizedNormalizedCenter(
                     for: point, atFrameIndex: frameIndex
                 )

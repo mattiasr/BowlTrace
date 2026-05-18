@@ -11,8 +11,17 @@ struct TrajectoryRenderer {
         style: AppState.TraceStyle
     ) -> CIImage? {
         let size = videoSize
-        let endIndex = max(1, Int(Double(trajectory.points.count) * fraction))
-        let visiblePoints = Array(trajectory.points.prefix(endIndex))
+        // Prefer frame-index gating (point.frameIndex <= currentFrame) so
+        // the trace appears progressively as the ball reaches each frame,
+        // matching `fi <= frame_index` in Scripts/trajectory_lab.py. Fall
+        // back to fraction-of-count when the caller has no frame index.
+        let visiblePoints: [TrajectoryPoint]
+        if frameIndex != nil {
+            visiblePoints = trajectory.visiblePoints(upToFrameIndex: frameIndex)
+        } else {
+            let endIndex = max(1, Int(Double(trajectory.points.count) * fraction))
+            visiblePoints = Array(trajectory.points.prefix(endIndex))
+        }
         guard visiblePoints.count > 1 else { return nil }
 
         let renderer = UIGraphicsImageRenderer(size: size)

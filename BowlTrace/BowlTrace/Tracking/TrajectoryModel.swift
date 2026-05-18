@@ -54,19 +54,33 @@ struct TrajectoryModel {
 
     var isEmpty: Bool { points.isEmpty }
 
+    /// Trajectory points whose source frame has already played by the time the
+    /// playback head sits on `frameIndex`. When `frameIndex` is nil (export
+    /// paths that key off video fraction instead, legacy callers, etc.) all
+    /// points are returned. Mirrors `fi <= frame_index` gating in
+    /// `Scripts/trajectory_lab.py::draw_video`.
+    func visiblePoints(upToFrameIndex frameIndex: Int?) -> [TrajectoryPoint] {
+        guard let frameIndex else { return points }
+        return points.filter { $0.frameIndex <= frameIndex }
+    }
+
     func uiKitPath(in bounds: CGRect) -> UIBezierPath {
         return uiKitPath(in: bounds, atFrameIndex: nil)
     }
 
     /// Build a smooth path through the trajectory. When `atFrameIndex` is
-    /// provided AND `frameHomographies` is set, each point is moved into
-    /// `atFrameIndex`'s coordinate system, anchoring the trace to the lane
-    /// while the camera pans / shakes. Falls back to the un-stabilized
-    /// version otherwise.
+    /// provided, the path is also trimmed to points whose `frameIndex` has
+    /// already passed, so the trace draws progressively as the ball arrives
+    /// rather than appearing fully at video start. When `frameHomographies`
+    /// is also set, each visible point is moved into `atFrameIndex`'s
+    /// coordinate system to keep the trace anchored to the lane while the
+    /// camera pans / shakes. Falls back to the un-stabilized, un-trimmed
+    /// version when `atFrameIndex` is nil.
     func uiKitPath(in bounds: CGRect, atFrameIndex frameIndex: Int?) -> UIBezierPath {
-        guard points.count > 1 else { return UIBezierPath() }
+        let visible = visiblePoints(upToFrameIndex: frameIndex)
+        guard visible.count > 1 else { return UIBezierPath() }
         let path = UIBezierPath()
-        let mapped: [CGPoint] = points.compactMap { point -> CGPoint? in
+        let mapped: [CGPoint] = visible.compactMap { point -> CGPoint? in
             let n = stabilizedNormalizedCenter(for: point, atFrameIndex: frameIndex)
             let x = n.x * bounds.width
             let y = (1.0 - n.y) * bounds.height
@@ -91,14 +105,24 @@ struct TrajectoryModel {
         return point(atFraction: fraction, atFrameIndex: nil)
     }
 
-    /// Position lookup at a given trajectory fraction. When `atFrameIndex`
-    /// + `frameHomographies` are available, the returned position is
-    /// transformed into the target frame's coord system so the live ball
-    /// dot tracks the lane rather than the moving camera.
+    /// Position lookup for the live ball dot. When `atFrameIndex` is
+    /// provided we return the most recent trajectory point that has actually
+    /// played (so the dot doesn't jump ahead of the visible trace, and
+    /// doesn't render at all until the ball appears). When `atFrameIndex`
+    /// is nil we fall back to `fraction * pointCount` for legacy callers.
+    /// `atFrameIndex` + `frameHomographies` together produce a
+    /// camera-stabilized position.
     func point(atFraction fraction: Double, atFrameIndex frameIndex: Int?) -> CGPoint? {
         guard !points.isEmpty else { return nil }
-        let index = min(Int(fraction * Double(points.count - 1)), points.count - 1)
-        let p = points[index]
+        let p: TrajectoryPoint
+        if frameIndex != nil {
+            let visible = visiblePoints(upToFrameIndex: frameIndex)
+            guard let last = visible.last else { return nil }
+            p = last
+        } else {
+            let index = min(Int(fraction * Double(points.count - 1)), points.count - 1)
+            p = points[index]
+        }
         return stabilizedNormalizedCenter(for: p, atFrameIndex: frameIndex)
     }
 
