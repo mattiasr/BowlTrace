@@ -18,13 +18,14 @@ actor VideoExporter {
 
         let naturalSize = try await videoTrack.load(.naturalSize)
         let transform = try await videoTrack.load(.preferredTransform)
-        let correctedSize: CGSize
-        let t = transform
-        if t.b == 1 || t.b == -1 {
-            correctedSize = CGSize(width: naturalSize.height, height: naturalSize.width)
-        } else {
-            correctedSize = naturalSize
-        }
+
+        // Frames from AVAssetReader arrive in the track's stored orientation
+        // at naturalSize. The Vision-derived trajectory is in the same
+        // coordinate space, so we render and write at naturalSize and let
+        // AVAssetWriterInput.transform carry the display rotation.
+        // Writing at correctedSize while feeding naturalSize buffers raises
+        // an NSInvalidArgumentException from AVAssetWriterInputPixelBufferAdaptor
+        // and crashes on the first portrait frame.
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("bowltrace_export_\(UUID().uuidString)")
@@ -33,17 +34,18 @@ actor VideoExporter {
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.hevc,
-            AVVideoWidthKey: Int(correctedSize.width),
-            AVVideoHeightKey: Int(correctedSize.height),
+            AVVideoWidthKey: Int(naturalSize.width),
+            AVVideoHeightKey: Int(naturalSize.height),
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 8_000_000]
         ]
         let writerVideoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         writerVideoInput.expectsMediaDataInRealTime = false
+        writerVideoInput.transform = transform
 
         let attrs: [CFString: Any] = [
             kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey: Int(correctedSize.width),
-            kCVPixelBufferHeightKey: Int(correctedSize.height),
+            kCVPixelBufferWidthKey: Int(naturalSize.width),
+            kCVPixelBufferHeightKey: Int(naturalSize.height),
             kCVPixelBufferIOSurfacePropertiesKey: [:]
         ]
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
@@ -82,7 +84,7 @@ actor VideoExporter {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
-        let renderer = TrajectoryRenderer(videoSize: correctedSize)
+        let renderer = TrajectoryRenderer(videoSize: naturalSize)
         let nominalRate = (try? await videoTrack.load(.nominalFrameRate)) ?? 30.0
         let totalFrames = Int((duration.seconds * Double(nominalRate)).rounded())
         var frameIndex = 0

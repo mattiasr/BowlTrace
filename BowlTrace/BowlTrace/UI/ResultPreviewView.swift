@@ -224,8 +224,8 @@ struct ResultPreviewView: View {
                     }
                 )
                 try await exporter.saveToPhotos(url: url)
-                exportedURL = url
                 await MainActor.run {
+                    exportedURL = url
                     isExporting = false
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     withAnimation(.spring()) { exportSuccess = true }
