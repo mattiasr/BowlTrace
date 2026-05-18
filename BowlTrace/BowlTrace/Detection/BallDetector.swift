@@ -117,13 +117,11 @@ actor BallDetector {
         // uses AVAssetImageGenerator with `appliesPreferredTrackTransform = true`,
         // which produces already-rotated (display) frames, so `.up` is correct
         // there.
-        let orientation: CGImagePropertyOrientation = {
-            if let track = try? await asset.loadTracks(withMediaType: .video).first,
-               let transform = try? await track.load(.preferredTransform) {
-                return cgImageOrientation(for: transform)
-            }
-            return .up
-        }()
+        var orientation: CGImagePropertyOrientation = .up
+        if let track = try? await asset.loadTracks(withMediaType: .video).first,
+           let transform = try? await track.load(.preferredTransform) {
+            orientation = cgImageOrientation(for: transform)
+        }
 
         // Pass 1: ML chain scan across the whole video.
         if mlDetector.isAvailable {

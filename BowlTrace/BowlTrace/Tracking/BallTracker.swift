@@ -57,13 +57,11 @@ actor BallTracker {
         // Without this, mlChainScan's seed is in display orientation while the
         // tracker runs in storage orientation — the seed misses the ball and
         // the trace ends up rotated 90° on portrait clips.
-        let orientation: CGImagePropertyOrientation = {
-            if let track = try? await asset.loadTracks(withMediaType: .video).first,
-               let transform = try? await track.load(.preferredTransform) {
-                return cgImageOrientation(for: transform)
-            }
-            return .up
-        }()
+        var orientation: CGImagePropertyOrientation = .up
+        if let track = try? await asset.loadTracks(withMediaType: .video).first,
+           let transform = try? await track.load(.preferredTransform) {
+            orientation = cgImageOrientation(for: transform)
+        }
 
         var trajectory = TrajectoryModel(videoSize: videoSize)
         let sequenceHandler = VNSequenceRequestHandler()
