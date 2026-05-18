@@ -104,6 +104,7 @@ actor VideoExporter {
                 if let outputBuffer = compositor.makeOutputPixelBuffer(matchingSize: pixelBuffer) {
                     if let overlayCI = renderer.render(trajectory: trajectory,
                                                        upToFraction: fraction,
+                                                       atFrameIndex: frameIndex,
                                                        style: traceStyle) {
                         compositor.composite(sourceBuffer: pixelBuffer,
                                              overlayImage: overlayCI,

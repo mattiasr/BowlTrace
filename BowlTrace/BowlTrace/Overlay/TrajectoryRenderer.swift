@@ -7,6 +7,7 @@ struct TrajectoryRenderer {
     func render(
         trajectory: TrajectoryModel,
         upToFraction fraction: Double,
+        atFrameIndex frameIndex: Int? = nil,
         style: AppState.TraceStyle
     ) -> CIImage? {
         let size = videoSize
@@ -17,21 +18,28 @@ struct TrajectoryRenderer {
         let renderer = UIGraphicsImageRenderer(size: size)
         let image = renderer.image { ctx in
             let bounds = CGRect(origin: .zero, size: size)
-            let path = trajectory.uiKitPath(in: bounds)
+            // Stabilized path — uses trajectory.frameHomographies when
+            // available to anchor the trace to the lane across the camera's
+            // motion. Falls back to identity when no stabilization data.
+            let path = trajectory.uiKitPath(in: bounds, atFrameIndex: frameIndex)
 
             switch style {
             case .dot:
-                drawDots(points: visiblePoints, in: bounds, ctx: ctx.cgContext)
+                drawDots(trajectory: trajectory, points: visiblePoints,
+                         atFrameIndex: frameIndex, in: bounds, ctx: ctx.cgContext)
             case .line:
                 drawLine(path: path, ctx: ctx.cgContext)
             case .glow:
                 drawGlow(path: path, ctx: ctx.cgContext)
             }
 
-            // Current ball position indicator
+            // Current ball position indicator — also stabilized.
             if let last = visiblePoints.last {
-                let px = last.normalizedCenter.x * size.width
-                let py = (1.0 - last.normalizedCenter.y) * size.height
+                let stable = trajectory.stabilizedNormalizedCenter(
+                    for: last, atFrameIndex: frameIndex
+                )
+                let px = stable.x * size.width
+                let py = (1.0 - stable.y) * size.height
                 let radius: CGFloat = 10
                 let dotPath = UIBezierPath(ovalIn: CGRect(x: px - radius, y: py - radius,
                                                           width: radius*2, height: radius*2))
@@ -43,10 +51,17 @@ struct TrajectoryRenderer {
         return CIImage(image: image)
     }
 
-    private func drawDots(points: [TrajectoryPoint], in bounds: CGRect, ctx: CGContext) {
+    private func drawDots(trajectory: TrajectoryModel,
+                          points: [TrajectoryPoint],
+                          atFrameIndex frameIndex: Int?,
+                          in bounds: CGRect,
+                          ctx: CGContext) {
         for point in points {
-            let px = point.normalizedCenter.x * bounds.width
-            let py = (1.0 - point.normalizedCenter.y) * bounds.height
+            let stable = trajectory.stabilizedNormalizedCenter(
+                for: point, atFrameIndex: frameIndex
+            )
+            let px = stable.x * bounds.width
+            let py = (1.0 - stable.y) * bounds.height
             let progress = CGFloat(point.frameIndex) / CGFloat(max(points.count, 1))
             let alpha = 0.4 + 0.6 * progress
             let color = UIColor(red: 1.0, green: 0.42, blue: 0.0, alpha: alpha)

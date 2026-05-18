@@ -1,5 +1,6 @@
 import AVFoundation
 import Vision
+import simd
 
 actor BallTracker {
     private let confidenceThreshold: Float = 0.25
@@ -63,6 +64,14 @@ actor BallTracker {
         // tracked frame so it adapts to lighting along the lane.
         var refColor: SIMD3<Float>? = referenceColor
 
+        // Camera-motion stabilization: accumulate H_{i→0} via Vision's
+        // homographic registration between consecutive frames. Stored on
+        // `trajectory.frameHomographies` so the renderer can keep the
+        // trace anchored to the lane while the camera pans.
+        var frameHomographies: [simd_float3x3] = []
+        var accumulatedH = matrix_identity_float3x3
+        var previousPB: CVPixelBuffer?
+
         while let sampleBuffer = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
 
@@ -71,8 +80,26 @@ actor BallTracker {
                 continue
             }
 
-            // Skip everything before the seed frame — the ball isn't visible
-            // / wasn't auto-located there.
+            // Compute frame-to-frame homography for EVERY frame (including
+            // pre-seed frames) so the renderer has a complete H_{i→0}
+            // series. The bowler's body is an outlier minority on a wide
+            // bowling-alley shot — Vision's RANSAC locks onto the static
+            // background, giving us camera-motion compensation for free.
+            if let prev = previousPB {
+                let registration = VNHomographicImageRegistrationRequest(targetedCVPixelBuffer: prev)
+                let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+                if (try? handler.perform([registration])) != nil,
+                   let result = registration.results?.first as? VNImageHomographicAlignmentObservation {
+                    accumulatedH = accumulatedH * result.warpTransform
+                }
+            }
+            frameHomographies.append(accumulatedH)
+            previousPB = pixelBuffer
+
+            // Skip the tracking work for everything before the seed frame —
+            // the ball isn't visible / wasn't auto-located there. The
+            // homography above is still recorded so later trail points can
+            // be mapped back through pre-seed camera motion.
             if frameIndex < seedFrame {
                 frameIndex += 1
                 continue
@@ -172,6 +199,9 @@ actor BallTracker {
         trajectory.points = medianFilter(trajectory.points)
         trajectory.points = smooth(trajectory.points)
         trajectory.points = trimStationaryTail(trajectory.points)
+        if !frameHomographies.isEmpty {
+            trajectory.frameHomographies = frameHomographies
+        }
         return trajectory
     }
 

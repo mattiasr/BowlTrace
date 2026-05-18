@@ -85,15 +85,25 @@ struct ResultPreviewView: View {
                     .disabled(false)
             }
 
-            // Trajectory overlay (SwiftUI Canvas)
+            // Trajectory overlay (SwiftUI Canvas). When the trajectory was
+            // computed with stabilization data, derive the currently-shown
+            // frame index from playback progress and pass it through so
+            // every drawn point gets transformed into the displayed frame's
+            // coordinate system (keeping the trace glued to the lane while
+            // the camera pans).
             GeometryReader { geo in
                 Canvas { context, size in
                     let bounds = CGRect(origin: .zero, size: size)
-                    let path = video.trajectory.uiKitPath(in: bounds)
-                    drawTrace(path: path, context: &context, size: size, style: appState.traceStyle)
+                    let currentFrame = currentFrameIndex
+                    let path = video.trajectory.uiKitPath(in: bounds,
+                                                          atFrameIndex: currentFrame)
+                    drawTrace(path: path, context: &context, size: size,
+                              style: appState.traceStyle,
+                              atFrameIndex: currentFrame)
 
-                    // Animated ball dot
-                    if let center = video.trajectory.point(atFraction: playerProgress) {
+                    // Animated ball dot — also stabilized.
+                    if let center = video.trajectory.point(atFraction: playerProgress,
+                                                           atFrameIndex: currentFrame) {
                         let px = center.x * size.width
                         let py = (1.0 - center.y) * size.height
                         let circle = Path(ellipseIn: CGRect(x: px-8, y: py-8, width: 16, height: 16))
@@ -115,13 +125,29 @@ struct ResultPreviewView: View {
         return size.width / size.height
     }
 
-    private func drawTrace(path: UIBezierPath, context: inout GraphicsContext, size: CGSize, style: AppState.TraceStyle) {
+    /// Frame index of the currently-displayed playback position. Used to
+    /// stabilize the trace against camera motion via the trajectory's
+    /// per-frame homographies. Returns nil when no stabilization data is
+    /// available so renderers fall back to the unstabilized path.
+    private var currentFrameIndex: Int? {
+        guard let H = video.trajectory.frameHomographies, !H.isEmpty else { return nil }
+        let total = H.count
+        let clamped = min(max(0.0, playerProgress), 1.0)
+        return min(Int(clamped * Double(total - 1)), total - 1)
+    }
+
+    private func drawTrace(path: UIBezierPath, context: inout GraphicsContext,
+                           size: CGSize, style: AppState.TraceStyle,
+                           atFrameIndex frameIndex: Int?) {
         let swiftuiPath = Path(path.cgPath)
         switch style {
         case .dot:
             for point in video.trajectory.points {
-                let px = point.normalizedCenter.x * size.width
-                let py = (1.0 - point.normalizedCenter.y) * size.height
+                let stable = video.trajectory.stabilizedNormalizedCenter(
+                    for: point, atFrameIndex: frameIndex
+                )
+                let px = stable.x * size.width
+                let py = (1.0 - stable.y) * size.height
                 let circle = Path(ellipseIn: CGRect(x: px - 4, y: py - 4, width: 8, height: 8))
                 context.fill(circle, with: .color(Color.btAccent.opacity(0.8)))
             }
