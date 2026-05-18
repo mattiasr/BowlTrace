@@ -18,14 +18,20 @@ actor VideoExporter {
 
         let naturalSize = try await videoTrack.load(.naturalSize)
         let transform = try await videoTrack.load(.preferredTransform)
-
-        // Frames from AVAssetReader arrive in the track's stored orientation
-        // at naturalSize. The Vision-derived trajectory is in the same
-        // coordinate space, so we render and write at naturalSize and let
-        // AVAssetWriterInput.transform carry the display rotation.
-        // Writing at correctedSize while feeding naturalSize buffers raises
-        // an NSInvalidArgumentException from AVAssetWriterInputPixelBufferAdaptor
-        // and crashes on the first portrait frame.
+        let orientation = cgImageOrientation(for: transform)
+        // Trajectory points and the renderer canvas are in *display*
+        // orientation (the detection pipeline tells Vision the orientation,
+        // so all rects come back in display Vision-norm). Frames from
+        // AVAssetReader, however, arrive in *storage* orientation, and we
+        // keep that path because writing at correctedSize while feeding
+        // naturalSize buffers raises NSInvalidArgumentException from
+        // AVAssetWriterInputPixelBufferAdaptor. So: render overlay at
+        // displaySize, rotate it back to storage orientation before
+        // compositing onto the storage frame, and let
+        // AVAssetWriterInput.transform carry the playback rotation.
+        let displaySize = naturalSize.applying(transform).abs
+        let overlayToStorage = displayToStorageImageTransform(orientation: orientation,
+                                                              displaySize: displaySize)
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("bowltrace_export_\(UUID().uuidString)")
@@ -84,7 +90,7 @@ actor VideoExporter {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
-        let renderer = TrajectoryRenderer(videoSize: naturalSize)
+        let renderer = TrajectoryRenderer(videoSize: displaySize)
         let nominalRate = (try? await videoTrack.load(.nominalFrameRate)) ?? 30.0
         let totalFrames = Int((duration.seconds * Double(nominalRate)).rounded())
         var frameIndex = 0
@@ -106,8 +112,9 @@ actor VideoExporter {
                                                        upToFraction: fraction,
                                                        atFrameIndex: frameIndex,
                                                        style: traceStyle) {
+                        let oriented = overlayCI.transformed(by: overlayToStorage)
                         compositor.composite(sourceBuffer: pixelBuffer,
-                                             overlayImage: overlayCI,
+                                             overlayImage: oriented,
                                              into: outputBuffer)
                         while !writerVideoInput.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.01) }
                         adaptor.append(outputBuffer, withPresentationTime: pts)

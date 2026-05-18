@@ -7,8 +7,15 @@ import CoreImage
 /// `[0, 255]`. Returns nil if the buffer can't be locked or the rect
 /// collapses to zero pixels. Free function so both `BallDetector` (actor)
 /// and `BallTracker` (actor) can call it without crossing actor boundaries.
+///
+/// `orientation` is the Vision orientation the caller passed to its
+/// detection/tracking requests. When the orientation rotates the buffer
+/// (anything other than `.up`), the supplied rect is in *display* coords
+/// but the underlying `CVPixelBuffer` is still in storage orientation, so
+/// we rotate the rect back to storage before reading pixels.
 func sampleMeanColor(in pixelBuffer: CVPixelBuffer,
-                     normalizedRect: CGRect) -> SIMD3<Float>? {
+                     normalizedRect: CGRect,
+                     orientation: CGImagePropertyOrientation = .up) -> SIMD3<Float>? {
     CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
     defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
     guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
@@ -16,12 +23,14 @@ func sampleMeanColor(in pixelBuffer: CVPixelBuffer,
     let width = CVPixelBufferGetWidth(pixelBuffer)
     let height = CVPixelBufferGetHeight(pixelBuffer)
     let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+    let storageRect = rectInStorageOrientation(normalizedRect,
+                                               displayOrientation: orientation)
 
     // Vision: bottom-left origin. Pixel: top-left. Flip Y.
-    let pxMinX = max(0, Int(normalizedRect.minX * CGFloat(width)))
-    let pxMaxX = min(width, Int(normalizedRect.maxX * CGFloat(width)))
-    let pxMinY = max(0, Int((1 - normalizedRect.maxY) * CGFloat(height)))
-    let pxMaxY = min(height, Int((1 - normalizedRect.minY) * CGFloat(height)))
+    let pxMinX = max(0, Int(storageRect.minX * CGFloat(width)))
+    let pxMaxX = min(width, Int(storageRect.maxX * CGFloat(width)))
+    let pxMinY = max(0, Int((1 - storageRect.maxY) * CGFloat(height)))
+    let pxMaxY = min(height, Int((1 - storageRect.minY) * CGFloat(height)))
     guard pxMaxX > pxMinX, pxMaxY > pxMinY else { return nil }
 
     let buf = base.assumingMemoryBound(to: UInt8.self)
@@ -103,9 +112,22 @@ actor BallDetector {
         let duration = try await asset.load(.duration)
         guard duration.seconds > 0.5 else { throw AppError.videoTooShort }
 
+        // `mlChainScan` reads raw sensor-orientation frames via AVAssetReader, so
+        // it must tell Vision the display orientation. The sparse-sample path
+        // uses AVAssetImageGenerator with `appliesPreferredTrackTransform = true`,
+        // which produces already-rotated (display) frames, so `.up` is correct
+        // there.
+        let orientation: CGImagePropertyOrientation = {
+            if let track = try? await asset.loadTracks(withMediaType: .video).first,
+               let transform = try? await track.load(.preferredTransform) {
+                return cgImageOrientation(for: transform)
+            }
+            return .up
+        }()
+
         // Pass 1: ML chain scan across the whole video.
         if mlDetector.isAvailable {
-            if let seed = try? await mlChainScan(asset: asset) {
+            if let seed = try? await mlChainScan(asset: asset, orientation: orientation) {
                 return seed
             }
         }
@@ -159,7 +181,8 @@ actor BallDetector {
     /// `chainMinMotion` total displacement. Discards static false-positives
     /// (e.g. a red sign on the wall) by demanding motion across the chain.
     /// Returns nil if no qualifying chain exists.
-    private func mlChainScan(asset: AVURLAsset) async throws -> BallSeed? {
+    private func mlChainScan(asset: AVURLAsset,
+                             orientation: CGImagePropertyOrientation) async throws -> BallSeed? {
         let reader = try AVAssetReader(asset: asset)
         guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
             return nil
@@ -182,8 +205,11 @@ actor BallDetector {
             guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
                 frameIndex += 1; continue
             }
-            if let detection = mlDetector.detectWithConfidence(in: pixelBuffer) {
-                let color = sampleMeanColor(in: pixelBuffer, normalizedRect: detection.rect)
+            if let detection = mlDetector.detectWithConfidence(in: pixelBuffer,
+                                                               orientation: orientation) {
+                let color = sampleMeanColor(in: pixelBuffer,
+                                            normalizedRect: detection.rect,
+                                            orientation: orientation)
                 hits.append(Hit(frameIndex: frameIndex,
                                 rect: detection.rect,
                                 confidence: detection.confidence,

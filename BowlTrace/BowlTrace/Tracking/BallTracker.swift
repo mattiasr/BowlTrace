@@ -52,6 +52,19 @@ actor BallTracker {
         let totalFrames = (try? await processor.totalFrameCount) ?? 300
         reader.startReading()
 
+        // Tell Vision the display orientation of the source so every detection,
+        // tracker, homography and colour sample agrees on a single coord space.
+        // Without this, mlChainScan's seed is in display orientation while the
+        // tracker runs in storage orientation — the seed misses the ball and
+        // the trace ends up rotated 90° on portrait clips.
+        let orientation: CGImagePropertyOrientation = {
+            if let track = try? await asset.loadTracks(withMediaType: .video).first,
+               let transform = try? await track.load(.preferredTransform) {
+                return cgImageOrientation(for: transform)
+            }
+            return .up
+        }()
+
         var trajectory = TrajectoryModel(videoSize: videoSize)
         let sequenceHandler = VNSequenceRequestHandler()
         var lastObservation: VNDetectedObjectObservation? = VNDetectedObjectObservation(boundingBox: seedRect)
@@ -86,8 +99,17 @@ actor BallTracker {
             // bowling-alley shot — Vision's RANSAC locks onto the static
             // background, giving us camera-motion compensation for free.
             if let prev = previousPB {
-                let registration = VNHomographicImageRegistrationRequest(targetedCVPixelBuffer: prev)
-                let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+                // Both buffers must be reported with the same orientation so
+                // the resulting homography lives in display-pixel space —
+                // matching the trajectory points and the renderer's canvas.
+                let registration = VNHomographicImageRegistrationRequest(
+                    targetedCVPixelBuffer: prev,
+                    orientation: orientation,
+                    options: [:]
+                )
+                let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                                    orientation: orientation,
+                                                    options: [:])
                 if (try? handler.perform([registration])) != nil,
                    let result = registration.results?.first as? VNImageHomographicAlignmentObservation {
                     accumulatedH = accumulatedH * result.warpTransform
@@ -111,7 +133,7 @@ actor BallTracker {
             let request = VNTrackObjectRequest(detectedObjectObservation: seed)
             request.trackingLevel = .accurate
 
-            try? sequenceHandler.perform([request], on: pixelBuffer)
+            try? sequenceHandler.perform([request], on: pixelBuffer, orientation: orientation)
 
             if let result = request.results?.first as? VNDetectedObjectObservation {
                 // Always advance the tracker so it doesn't get stuck on a stale seed
@@ -136,7 +158,8 @@ actor BallTracker {
                     // inside the tracked box. Keeps the colour adapting to
                     // lighting along the lane.
                     if let sampled = sampleMeanColor(in: pixelBuffer,
-                                                    normalizedRect: result.boundingBox) {
+                                                    normalizedRect: result.boundingBox,
+                                                    orientation: orientation) {
                         if let prev = refColor {
                             let alpha: Float = 0.2
                             refColor = SIMD3<Float>(
@@ -157,7 +180,7 @@ actor BallTracker {
             // Periodic ML re-anchor. The detector is a no-op when the model
             // isn't bundled, so `mlAvailable` short-circuits the per-frame work.
             if mlAvailable, frameIndex > 0, frameIndex % mlAnchorInterval == 0 {
-                if let mlRect = mlDetector.detect(in: pixelBuffer) {
+                if let mlRect = mlDetector.detect(in: pixelBuffer, orientation: orientation) {
                     let mlCenter = CGPoint(x: mlRect.midX, y: mlRect.midY)
                     let accept: Bool
                     if let predicted = predictedNextCenter(history: trajectory.points,
@@ -170,7 +193,8 @@ actor BallTracker {
                         let colorOK: Bool
                         if let ref = refColor,
                            let cand = sampleMeanColor(in: pixelBuffer,
-                                                      normalizedRect: mlRect) {
+                                                      normalizedRect: mlRect,
+                                                      orientation: orientation) {
                             colorOK = normalizedColorDistance(cand, ref) <= mlColorMaxDistance
                         } else {
                             colorOK = true
