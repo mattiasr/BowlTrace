@@ -82,7 +82,7 @@ actor BallTracker {
         // trace anchored to the lane while the camera pans.
         var frameHomographies: [simd_float3x3] = []
         var accumulatedH = matrix_identity_float3x3
-        var previousStabCI: CIImage?
+        var previousStabPB: CVPixelBuffer?
 
         // Stabilization crop: feed Vision only the lane region so it locks
         // onto gutters and lane structure instead of the bowler. In display
@@ -96,6 +96,24 @@ actor BallTracker {
             width: videoSize.width * 0.90,
             height: videoSize.height * 0.65
         )
+        let stabW = Int(stabCropRect.width.rounded())
+        let stabH = Int(stabCropRect.height.rounded())
+
+        // Materialize cropped lane frames into a zero-origin CVPixelBuffer
+        // pool. Passing a `.cropped(to:)` CIImage directly into Vision was
+        // unreliable — Vision either read uncropped pixels or returned
+        // near-identity translations, so stabilization was effectively a
+        // no-op. A concrete CVPixelBuffer with origin (0, 0) removes the
+        // ambiguity. CIContext is reused across frames.
+        let stabCIContext = CIContext(options: [.useSoftwareRenderer: false])
+        var stabPool: CVPixelBufferPool?
+        let pixBufAttrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferWidthKey as String: stabW,
+            kCVPixelBufferHeightKey as String: stabH,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
+        ]
+        CVPixelBufferPoolCreate(nil, nil, pixBufAttrs as CFDictionary, &stabPool)
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
@@ -105,52 +123,55 @@ actor BallTracker {
                 continue
             }
 
-            // Camera-motion stabilization: rotate the frame to display
-            // orientation, crop out the bowler region, and let
-            // VNTranslationalImageRegistrationRequest lock onto the
-            // remaining lane/gutter pixels. Two reasons this beats running
-            // registration on the full frame:
-            //   • The bowler walks/swings independently of the camera. With
-            //     him in frame he dominates feature matching and Vision
-            //     reports his motion as "camera motion."
-            //   • The lane/gutters are the only physically-static features
-            //     a bowling-alley shot reliably has. Crop to where they
-            //     dominate and Vision tracks them by default.
-            // Pixel-space translation in the cropped image equals the
-            // translation in the full display frame (the crop origin
-            // cancels in the per-frame delta), so we can apply tx, ty
-            // directly to the accumulated H_{i→0} without any scaling.
-            let orientedCI = CIImage(cvPixelBuffer: pixelBuffer)
-                .oriented(orientation)
-            let stabCI = orientedCI.cropped(to: stabCropRect)
+            // Camera-motion stabilization: rotate to display orientation,
+            // crop to the lane region (bowler excluded), render to a
+            // zero-origin CVPixelBuffer, then run translational
+            // registration. The bowler walks/swings independently of the
+            // camera — with him in frame he dominates feature matching and
+            // Vision reports his motion as camera motion. Cropping to the
+            // lane forces Vision to lock onto gutters and lane structure,
+            // which are physically static. Per-frame pixel translation in
+            // the crop equals the full-frame translation (crop origin
+            // cancels in the delta), so tx/ty go straight into H_{i→0}.
+            var stabPB: CVPixelBuffer?
+            if let pool = stabPool {
+                CVPixelBufferPoolCreatePixelBuffer(nil, pool, &stabPB)
+            }
+            if let stabPB {
+                let oriented = CIImage(cvPixelBuffer: pixelBuffer).oriented(orientation)
+                let rebased = oriented
+                    .cropped(to: stabCropRect)
+                    .transformed(by: CGAffineTransform(translationX: -stabCropRect.minX,
+                                                       y: -stabCropRect.minY))
+                stabCIContext.render(rebased, to: stabPB)
 
-            if let prev = previousStabCI {
-                let registration = VNTranslationalImageRegistrationRequest(
-                    targetedCIImage: prev,
-                    options: [:]
-                )
-                let handler = VNImageRequestHandler(ciImage: stabCI, options: [:])
-                if (try? handler.perform([registration])) != nil,
-                   let result = registration.results?.first as? VNImageTranslationAlignmentObservation {
-                    let cg = result.alignmentTransform
-                    // Sanity gate: a per-frame translation > 25% of either
-                    // dimension is almost certainly noise (registration
-                    // locked onto a moving subject anyway). Drop that step.
-                    let maxStepFrac: CGFloat = 0.25
-                    let stepOK = abs(cg.tx) < videoSize.width * maxStepFrac
-                              && abs(cg.ty) < videoSize.height * maxStepFrac
-                    if stepOK {
-                        let stepM = simd_float3x3(
-                            SIMD3<Float>(1, 0, 0),
-                            SIMD3<Float>(0, 1, 0),
-                            SIMD3<Float>(Float(cg.tx), Float(cg.ty), 1)
-                        )
-                        accumulatedH = accumulatedH * stepM
+                if let prev = previousStabPB {
+                    let registration = VNTranslationalImageRegistrationRequest(
+                        targetedCVPixelBuffer: prev,
+                        options: [:]
+                    )
+                    let handler = VNImageRequestHandler(cvPixelBuffer: stabPB, options: [:])
+                    if (try? handler.perform([registration])) != nil,
+                       let result = registration.results?.first as? VNImageTranslationAlignmentObservation {
+                        let cg = result.alignmentTransform
+                        // Sanity gate: a per-frame translation > 25% of
+                        // either dimension is almost certainly noise. Drop.
+                        let maxStepFrac: CGFloat = 0.25
+                        let stepOK = abs(cg.tx) < videoSize.width * maxStepFrac
+                                  && abs(cg.ty) < videoSize.height * maxStepFrac
+                        if stepOK {
+                            let stepM = simd_float3x3(
+                                SIMD3<Float>(1, 0, 0),
+                                SIMD3<Float>(0, 1, 0),
+                                SIMD3<Float>(Float(cg.tx), Float(cg.ty), 1)
+                            )
+                            accumulatedH = accumulatedH * stepM
+                        }
                     }
                 }
+                previousStabPB = stabPB
             }
             frameHomographies.append(accumulatedH)
-            previousStabCI = stabCI
 
             // Skip the tracking work for everything before the seed frame —
             // the ball isn't visible / wasn't auto-located there. The
