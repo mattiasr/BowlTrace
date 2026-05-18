@@ -116,12 +116,19 @@ actor VideoExporter {
                         compositor.composite(sourceBuffer: pixelBuffer,
                                              overlayImage: oriented,
                                              into: outputBuffer)
-                        while !writerVideoInput.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.01) }
-                        adaptor.append(outputBuffer, withPresentationTime: pts)
                     } else {
-                        while !writerVideoInput.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.01) }
-                        adaptor.append(pixelBuffer, withPresentationTime: pts)
+                        // No visible trace points yet (typical on the
+                        // first frames before mlChainScan's seed has
+                        // produced a sample). Copy the source into our
+                        // own outputBuffer rather than handing the
+                        // writer a buffer from AVAssetReader's pool —
+                        // that's a different allocator and the adaptor
+                        // can raise NSInvalidArgumentException when
+                        // mixing pools.
+                        compositor.copy(sourceBuffer: pixelBuffer, into: outputBuffer)
                     }
+                    while !writerVideoInput.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.01) }
+                    adaptor.append(outputBuffer, withPresentationTime: pts)
                 }
             }
 

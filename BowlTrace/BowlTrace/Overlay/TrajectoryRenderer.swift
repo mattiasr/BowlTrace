@@ -24,7 +24,18 @@ struct TrajectoryRenderer {
         }
         guard visiblePoints.count > 1 else { return nil }
 
-        let renderer = UIGraphicsImageRenderer(size: size)
+        // Render at scale 1.0 so the resulting CIImage extent equals
+        // `size` (= displaySize), not size × screenScale. The exporter
+        // builds `displayToStorageImageTransform` from displaySize, so any
+        // scale > 1 would leave the rotated overlay's extent at a
+        // non-zero / negative origin and the compositor's
+        // `sourceCI.extent.width / overlayImage.extent.width` scale
+        // would silently render the trace off-canvas (or, for portrait
+        // clips, hand the writer a malformed frame).
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1.0
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
         let image = renderer.image { ctx in
             let bounds = CGRect(origin: .zero, size: size)
             // Stabilized path — uses trajectory.frameHomographies when
