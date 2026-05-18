@@ -13,6 +13,11 @@ struct ManualSelectView: View {
     @State private var currentFrame: UIImage?
     @State private var selectedSeedRect: CGRect?
     @State private var videoSize: CGSize = CGSize(width: 1920, height: 1080)
+    /// Nominal frame rate of the source video; used to turn `scrubPosition`
+    /// (a fraction of duration) into the integer `seedFrame` we hand to
+    /// BallTracker so the tracker skips frames before the user's chosen
+    /// keyframe instead of running on frame 0.
+    @State private var nominalFrameRate: Double = 30
     @State private var showHint = true
     @State private var isConfirming = false
 
@@ -35,7 +40,8 @@ struct ManualSelectView: View {
                 .frame(maxHeight: .infinity)
             scrubber
             stepButtons
-            Spacer(minLength: 16)
+            confirmButton
+            Spacer(minLength: 8)
         }
         .background(Color.btBackground.ignoresSafeArea())
         .task { await setupPlayer() }
@@ -85,16 +91,40 @@ struct ManualSelectView: View {
 
             Spacer()
 
-            Button(action: confirmSelection) {
-                Text("✓")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(selectedSeedRect != nil ? .btAccent : .btTextDisabled)
-            }
-            .frame(width: 44, height: 44)
-            .disabled(selectedSeedRect == nil || isConfirming)
+            // Balance for the leading close button so the title stays centred.
+            Color.clear.frame(width: 44, height: 44)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    /// Labeled primary action surfaced at the bottom of the screen — replaces
+    /// the easy-to-miss checkmark glyph that used to live in the nav bar.
+    /// Disabled (with a low-contrast appearance) until the user has placed
+    /// the seed reticle so the affordance is clearly tied to the picker.
+    /// On tap, `isConfirming = true` is set immediately by `confirmSelection`
+    /// so the user gets instant feedback while the phase transition renders.
+    private var confirmButton: some View {
+        Button(action: confirmSelection) {
+            HStack(spacing: 8) {
+                if isConfirming {
+                    ProgressView().tint(.white)
+                } else {
+                    Image(systemName: "scope")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                Text(isConfirming ? "Tracing…" : "Trace from here")
+                    .font(.system(size: 16, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .foregroundColor(selectedSeedRect != nil ? .white : .btTextDisabled)
+            .background(selectedSeedRect != nil ? Color.btAccent : Color.btSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .disabled(selectedSeedRect == nil || isConfirming)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
     }
 
     private var frameViewer: some View {
@@ -264,9 +294,13 @@ struct ManualSelectView: View {
         asset = avAsset
         let dur = (try? await avAsset.load(.duration))?.seconds ?? 1
         let tracks = (try? await avAsset.loadTracks(withMediaType: .video)) ?? []
-        if let track = tracks.first,
-           let size = try? await track.load(.naturalSize) {
-            videoSize = size
+        if let track = tracks.first {
+            if let size = try? await track.load(.naturalSize) {
+                videoSize = size
+            }
+            if let rate = try? await track.load(.nominalFrameRate), rate > 0 {
+                nominalFrameRate = Double(rate)
+            }
         }
         duration = dur
         let p = AVPlayer(url: videoURL)
@@ -299,6 +333,22 @@ struct ManualSelectView: View {
         isConfirming = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
 
+        // Two values the manual path used to leave at their defaults — both
+        // contribute to the "ML not really tracking the keyframe" symptom:
+        //   • seedFrame: the tracker should start at the frame the user
+        //     picked, not at 0. With seedFrame = 0 the tracker burns frames
+        //     before the ball is visible and the first ML re-anchor can
+        //     latch onto random scene content.
+        //   • referenceColor: feeds BallTracker's ML-re-anchor colour gate.
+        //     Without a colour reference the gate degrades to "accept any
+        //     detection passing the spatial check," which on left-handed or
+        //     occluded clips means false positives on lane logos / the
+        //     bowler get accepted.
+        let seedFrame = Int((scrubPosition * duration * nominalFrameRate).rounded())
+        let referenceColor = currentFrame.flatMap {
+            sampleMeanColor(in: $0, normalizedRect: seedRect)
+        }
+
         Task {
             appState.startProcessing(videoURL: videoURL)
             let tracker = BallTracker()
@@ -307,6 +357,8 @@ struct ManualSelectView: View {
                 let trajectory = try await tracker.track(
                     in: avAsset,
                     seedRect: seedRect,
+                    seedFrame: seedFrame,
+                    referenceColor: referenceColor,
                     videoSize: videoSize,
                     progressHandler: { progress in
                         Task { @MainActor in
@@ -319,6 +371,51 @@ struct ManualSelectView: View {
                 appState.setError(.importFailed(underlying: error))
             }
         }
+    }
+
+    /// Mean RGB inside `normalizedRect` (Vision-norm, bottom-left origin) of
+    /// the supplied display-oriented `UIImage`. Returns nil if the image's
+    /// pixel data can't be accessed or the rect collapses to zero pixels.
+    /// Kept local to this view rather than reusing the
+    /// `sampleMeanColor(in: CVPixelBuffer, ...)` free function so we don't
+    /// have to round-trip the already-rendered preview frame back through
+    /// the CVPixelBuffer pool.
+    private func sampleMeanColor(in image: UIImage, normalizedRect rect: CGRect) -> SIMD3<Float>? {
+        guard let cg = image.cgImage else { return nil }
+        let width = cg.width, height = cg.height
+        // Vision-norm bottom-left → pixel top-left.
+        let pxMinX = max(0, Int(rect.minX * CGFloat(width)))
+        let pxMaxX = min(width, Int(rect.maxX * CGFloat(width)))
+        let pxMinY = max(0, Int((1 - rect.maxY) * CGFloat(height)))
+        let pxMaxY = min(height, Int((1 - rect.minY) * CGFloat(height)))
+        guard pxMaxX > pxMinX, pxMaxY > pxMinY else { return nil }
+
+        let cropW = pxMaxX - pxMinX, cropH = pxMaxY - pxMinY
+        let bytesPerRow = cropW * 4
+        var buffer = [UInt8](repeating: 0, count: cropH * bytesPerRow)
+        let cs = CGColorSpaceCreateDeviceRGB()
+        // RGBA8 premultiplied so the byte layout is (R, G, B, A) per pixel.
+        let bitmapInfo: UInt32 = CGImageAlphaInfo.premultipliedLast.rawValue
+        guard let ctx = CGContext(
+            data: &buffer, width: cropW, height: cropH,
+            bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+            space: cs, bitmapInfo: bitmapInfo
+        ) else { return nil }
+        // Draw the source image so the crop region maps to the context's
+        // origin; the negative origin shifts the image so only the crop
+        // ends up inside the cropW×cropH context.
+        ctx.draw(cg, in: CGRect(x: -pxMinX, y: -(height - pxMaxY),
+                                 width: width, height: height))
+
+        var rSum = 0, gSum = 0, bSum = 0
+        let total = cropW * cropH
+        for i in 0..<total {
+            rSum += Int(buffer[i * 4 + 0])
+            gSum += Int(buffer[i * 4 + 1])
+            bSum += Int(buffer[i * 4 + 2])
+        }
+        let n = Float(total)
+        return SIMD3<Float>(Float(rSum) / n, Float(gSum) / n, Float(bSum) / n)
     }
 
     private func timeString(from seconds: Double) -> String {

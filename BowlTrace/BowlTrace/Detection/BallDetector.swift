@@ -232,25 +232,47 @@ actor BallDetector {
         }
         if !current.isEmpty { chains.append(current) }
 
-        // Filter chains by length AND total displacement.
-        let valid = chains.filter { chain in
-            guard chain.count >= chainLength else { return false }
+        // Score each chain by length × directness, where directness =
+        // (net displacement) / (total path length). This replaces the
+        // previous "longest chain" winner selection, which was biased
+        // against left-handed bowlers: their ML chain is often shorter
+        // and noisier (body occlusion during the approach, ball exits the
+        // frame on the left gutter sooner), so the "longest" winner could
+        // end up being a false-positive chain elsewhere in the frame
+        // (lane logos, the bowler walking up). Directness is symmetric
+        // in motion direction — works for left- and right-handed bowlers
+        // and for portrait or landscape framing — and rewards the
+        // monotonic motion signature of a real ball roll over the
+        // wobble of false-positive chains.
+        struct ChainScore { let chain: [Hit]; let directness: CGFloat }
+        let scored: [ChainScore] = chains.compactMap { chain -> ChainScore? in
+            guard chain.count >= chainLength else { return nil }
             let xs = chain.map(\.rect.midX)
             let ys = chain.map(\.rect.midY)
-            let dx = (xs.max() ?? 0) - (xs.min() ?? 0)
-            let dy = (ys.max() ?? 0) - (ys.min() ?? 0)
-            let spread = (dx * dx + dy * dy).squareRoot()
-            return spread >= chainMinMotion
+            let xSpread = (xs.max() ?? 0) - (xs.min() ?? 0)
+            let ySpread = (ys.max() ?? 0) - (ys.min() ?? 0)
+            let spread = (xSpread * xSpread + ySpread * ySpread).squareRoot()
+            guard spread >= chainMinMotion else { return nil }
+            let dxNet = (xs.last ?? 0) - (xs.first ?? 0)
+            let dyNet = (ys.last ?? 0) - (ys.first ?? 0)
+            let netDisp = (dxNet * dxNet + dyNet * dyNet).squareRoot()
+            var pathLen: CGFloat = 0
+            for i in 1..<chain.count {
+                let dx = chain[i].rect.midX - chain[i-1].rect.midX
+                let dy = chain[i].rect.midY - chain[i-1].rect.midY
+                pathLen += (dx * dx + dy * dy).squareRoot()
+            }
+            let directness = pathLen > 0 ? netDisp / pathLen : 0
+            return ChainScore(chain: chain, directness: directness)
         }
-        guard !valid.isEmpty else { return nil }
+        guard !scored.isEmpty else { return nil }
 
-        // Pick the longest chain; tie-break on peak confidence.
-        let winner = valid.max { a, b in
-            if a.count != b.count { return a.count < b.count }
-            let aPeak = a.map(\.confidence).max() ?? 0
-            let bPeak = b.map(\.confidence).max() ?? 0
-            return aPeak < bPeak
-        }!
+        // Winner = highest (count × directness). Long AND monotonic.
+        let winner = scored.max { a, b in
+            let aScore = CGFloat(a.chain.count) * a.directness
+            let bScore = CGFloat(b.chain.count) * b.directness
+            return aScore < bScore
+        }!.chain
         let first = winner[0]
         return BallSeed(rect: first.rect,
                         frameIndex: first.frameIndex,

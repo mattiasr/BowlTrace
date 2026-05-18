@@ -101,31 +101,6 @@ struct TrajectoryModel {
         return path
     }
 
-    func point(atFraction fraction: Double) -> CGPoint? {
-        return point(atFraction: fraction, atFrameIndex: nil)
-    }
-
-    /// Position lookup for the live ball dot. When `atFrameIndex` is
-    /// provided we return the most recent trajectory point that has actually
-    /// played (so the dot doesn't jump ahead of the visible trace, and
-    /// doesn't render at all until the ball appears). When `atFrameIndex`
-    /// is nil we fall back to `fraction * pointCount` for legacy callers.
-    /// `atFrameIndex` + `frameHomographies` together produce a
-    /// camera-stabilized position.
-    func point(atFraction fraction: Double, atFrameIndex frameIndex: Int?) -> CGPoint? {
-        guard !points.isEmpty else { return nil }
-        let p: TrajectoryPoint
-        if frameIndex != nil {
-            let visible = visiblePoints(upToFrameIndex: frameIndex)
-            guard let last = visible.last else { return nil }
-            p = last
-        } else {
-            let index = min(Int(fraction * Double(points.count - 1)), points.count - 1)
-            p = points[index]
-        }
-        return stabilizedNormalizedCenter(for: p, atFrameIndex: frameIndex)
-    }
-
     /// Returns the normalized coordinates (vision-style, bottom-left origin)
     /// that `point.normalizedCenter` should be rendered at when the camera
     /// is currently showing `atFrameIndex`. Without homographies (or with

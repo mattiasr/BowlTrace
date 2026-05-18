@@ -52,20 +52,6 @@ struct TrajectoryRenderer {
             case .glow:
                 drawGlow(path: path, ctx: ctx.cgContext)
             }
-
-            // Current ball position indicator — also stabilized.
-            if let last = visiblePoints.last {
-                let stable = trajectory.stabilizedNormalizedCenter(
-                    for: last, atFrameIndex: frameIndex
-                )
-                let px = stable.x * size.width
-                let py = (1.0 - stable.y) * size.height
-                let radius: CGFloat = 10
-                let dotPath = UIBezierPath(ovalIn: CGRect(x: px - radius, y: py - radius,
-                                                          width: radius*2, height: radius*2))
-                UIColor.white.withAlphaComponent(0.9).setFill()
-                dotPath.fill()
-            }
         }
 
         return CIImage(image: image)

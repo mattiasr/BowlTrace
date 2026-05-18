@@ -108,7 +108,17 @@ actor BallTracker {
         // than the previous bowler-crop without contamination — the lower
         // we go, the wider apart the gutters are, the more dominant their
         // edges are.
-        let stripVisionYRange: ClosedRange<CGFloat> = 0.20...0.45
+        // Narrowed from 0.20..0.45 to 0.28..0.40 to fix the residual drift:
+        // QA traced the constant under-correction to perspective — gutters
+        // converge with depth, so the original 25%-tall strip averaged Sobel
+        // peaks across rows whose true per-pan shift differed by perspective
+        // foreshortening, biasing the row-summed peak toward smaller motion.
+        // A 12%-tall band just above the foul line keeps the gutters clearly
+        // visible (where they're still wide) while collapsing the depth
+        // range, so all sampled rows shift by nearly the same pixel amount
+        // per camera pan. We don't go lower than ~0.25 because in typical
+        // portrait clips the foul line / bowler's foot live in that band.
+        let stripVisionYRange: ClosedRange<CGFloat> = 0.28...0.40
         // Render the strip at full source resolution so the Sobel peak's
         // column index isn't bottlenecked by downsampling. Capping at 1080
         // covers all reasonable iPhone display widths; we don't pay much

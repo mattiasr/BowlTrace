@@ -12,6 +12,10 @@ struct ResultPreviewView: View {
     @State private var exportedURL: URL?
     @State private var playerProgress: Double = 0
     @State private var playerTimer: Timer?
+    // Observer token for AVPlayerItemDidPlayToEndTime so a player rebuild
+    // (e.g. after re-pick / re-analyze) can detach the old observer instead
+    // of leaking it and re-seeking the previous player.
+    @State private var endOfPlaybackObserver: NSObjectProtocol?
     @State private var showDeleteConfirmation = false
 
     var body: some View {
@@ -36,7 +40,19 @@ struct ResultPreviewView: View {
             Text("The trajectory will be discarded. The original video is unaffected.")
         }
         .onAppear { setupPlayer() }
-        .onDisappear { playerTimer?.invalidate() }
+        .onDisappear { teardownPlayer() }
+        // Belt-and-braces: if SwiftUI happens to reuse this view instance for
+        // a new ProcessedVideo (the parent .id(video.id) already aims to
+        // prevent that, but identity heuristics can surprise you), rebuild
+        // the player + timer + overlay state so the preview reflects the new
+        // trajectory and video URL instead of showing the previous run.
+        .onChange(of: video.id) { _, _ in
+            teardownPlayer()
+            playerProgress = 0
+            exportedURL = nil
+            exportSuccess = false
+            setupPlayer()
+        }
     }
 
     private var navigationBar: some View {
@@ -100,15 +116,6 @@ struct ResultPreviewView: View {
                     drawTrace(path: path, context: &context, size: size,
                               style: appState.traceStyle,
                               atFrameIndex: currentFrame)
-
-                    // Animated ball dot — also stabilized.
-                    if let center = video.trajectory.point(atFraction: playerProgress,
-                                                           atFrameIndex: currentFrame) {
-                        let px = center.x * size.width
-                        let py = (1.0 - center.y) * size.height
-                        let circle = Path(ellipseIn: CGRect(x: px-8, y: py-8, width: 16, height: 16))
-                        context.fill(circle, with: .color(.white.opacity(0.9)))
-                    }
                 }
                 .allowsHitTesting(false)
             }
@@ -219,6 +226,11 @@ struct ResultPreviewView: View {
     }
 
     private func setupPlayer() {
+        // Tear down any existing player so a re-setup (re-pick / re-analyze)
+        // doesn't leave the previous AVPlayer + timer + loop observer alive
+        // driving playerProgress from the OLD AVPlayerItem.
+        teardownPlayer()
+
         let p = AVPlayer(url: video.sourceURL)
         player = p
         p.play()
@@ -227,11 +239,25 @@ struct ResultPreviewView: View {
             let current = p.currentTime().seconds
             playerProgress = current / dur
         }
-        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime,
-                                               object: p.currentItem, queue: .main) { _ in
+        endOfPlaybackObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: p.currentItem,
+            queue: .main
+        ) { _ in
             p.seek(to: .zero)
             p.play()
         }
+    }
+
+    private func teardownPlayer() {
+        playerTimer?.invalidate()
+        playerTimer = nil
+        if let observer = endOfPlaybackObserver {
+            NotificationCenter.default.removeObserver(observer)
+            endOfPlaybackObserver = nil
+        }
+        player?.pause()
+        player = nil
     }
 
     private func startExport() {

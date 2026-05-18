@@ -4,11 +4,30 @@ import SwiftUI
 struct BowlTraceApp: App {
     @StateObject private var appState = AppState()
 
+    init() {
+        Self.installCrashLogger()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(appState)
                 .preferredColorScheme(.dark)
+        }
+    }
+
+    /// Last-resort logger for uncaught Objective-C exceptions (which iOS
+    /// throws from PHPhotoLibrary, AVAssetWriter, and other Apple frameworks
+    /// when their preconditions are violated). Without this, the app abort
+    /// is invisible to the user — they see "BowlTrace crashed" and nothing
+    /// reaches the Xcode console. Diagnostic only; remove once the
+    /// save-to-camera-roll crash is pinned down.
+    private static func installCrashLogger() {
+        NSSetUncaughtExceptionHandler { exception in
+            NSLog("BT-CRASH name=%@", exception.name.rawValue)
+            NSLog("BT-CRASH reason=%@", exception.reason ?? "<nil>")
+            NSLog("BT-CRASH userInfo=%@", String(describing: exception.userInfo))
+            exception.callStackSymbols.forEach { NSLog("BT-CRASH  %@", $0) }
         }
     }
 }
@@ -44,7 +63,13 @@ struct RootView: View {
         case .awaitingManualSeed(let url):
             ManualSelectView(videoURL: url)
         case .previewing(let video):
+            // Force a fresh view identity per ProcessedVideo so SwiftUI tears
+            // down the previous AVPlayer + playback timer and rebuilds the
+            // trajectory overlay. Without this, a re-pick / re-analyze keeps
+            // the previous view's @State alive and the preview silently shows
+            // the stale video + trace.
             ResultPreviewView(video: video)
+                .id(video.id)
         case .exporting:
             ProcessingView(isExporting: true)
         }
