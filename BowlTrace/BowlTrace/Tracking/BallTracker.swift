@@ -1,5 +1,6 @@
 import AVFoundation
 import Vision
+import CoreImage
 import simd
 
 actor BallTracker {
@@ -76,12 +77,25 @@ actor BallTracker {
         var refColor: SIMD3<Float>? = referenceColor
 
         // Camera-motion stabilization: accumulate H_{i→0} via Vision's
-        // homographic registration between consecutive frames. Stored on
+        // translational registration between consecutive frames. Stored on
         // `trajectory.frameHomographies` so the renderer can keep the
         // trace anchored to the lane while the camera pans.
         var frameHomographies: [simd_float3x3] = []
         var accumulatedH = matrix_identity_float3x3
-        var previousPB: CVPixelBuffer?
+        var previousStabCI: CIImage?
+
+        // Stabilization crop: feed Vision only the lane region so it locks
+        // onto gutters and lane structure instead of the bowler. In display
+        // orientation: bottom of frame = bowler/foul line, top = pins.
+        // Drop the bottom 30% (bowler), top 5% (pin chaos), and a sliver on
+        // each side. CIImage uses bottom-left origin so origin.y is measured
+        // from the bottom.
+        let stabCropRect = CGRect(
+            x: videoSize.width * 0.05,
+            y: videoSize.height * 0.30,
+            width: videoSize.width * 0.90,
+            height: videoSize.height * 0.65
+        )
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
@@ -91,40 +105,37 @@ actor BallTracker {
                 continue
             }
 
-            // Compute frame-to-frame translation for EVERY frame (including
-            // pre-seed frames) so the renderer has a complete H_{i→0}
-            // series. We use `VNTranslationalImageRegistrationRequest` rather
-            // than the homographic variant because:
-            //   • The lane is mostly featureless — RANSAC inside
-            //     VNHomographicImageRegistrationRequest often fails or locks
-            //     onto the bowler/pins, returning garbage homographies.
-            //   • Handheld camera motion on these clips is dominated by pan
-            //     and shake — pure translation captures it well, and the
-            //     trade-off (no rotation / zoom compensation) is acceptable.
-            //   • The returned CGAffineTransform is unambiguously in pixel
-            //     space, which removes the documentation ambiguity around
-            //     `warpTransform`'s coordinate convention.
-            //
-            // Both buffers are reported with the same orientation so the
-            // translation lives in display-pixel space — matching the
-            // trajectory points and the renderer canvas.
-            if let prev = previousPB {
+            // Camera-motion stabilization: rotate the frame to display
+            // orientation, crop out the bowler region, and let
+            // VNTranslationalImageRegistrationRequest lock onto the
+            // remaining lane/gutter pixels. Two reasons this beats running
+            // registration on the full frame:
+            //   • The bowler walks/swings independently of the camera. With
+            //     him in frame he dominates feature matching and Vision
+            //     reports his motion as "camera motion."
+            //   • The lane/gutters are the only physically-static features
+            //     a bowling-alley shot reliably has. Crop to where they
+            //     dominate and Vision tracks them by default.
+            // Pixel-space translation in the cropped image equals the
+            // translation in the full display frame (the crop origin
+            // cancels in the per-frame delta), so we can apply tx, ty
+            // directly to the accumulated H_{i→0} without any scaling.
+            let orientedCI = CIImage(cvPixelBuffer: pixelBuffer)
+                .oriented(orientation)
+            let stabCI = orientedCI.cropped(to: stabCropRect)
+
+            if let prev = previousStabCI {
                 let registration = VNTranslationalImageRegistrationRequest(
-                    targetedCVPixelBuffer: prev,
-                    orientation: orientation,
+                    targetedCIImage: prev,
                     options: [:]
                 )
-                let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
-                                                    orientation: orientation,
-                                                    options: [:])
+                let handler = VNImageRequestHandler(ciImage: stabCI, options: [:])
                 if (try? handler.perform([registration])) != nil,
                    let result = registration.results?.first as? VNImageTranslationAlignmentObservation {
                     let cg = result.alignmentTransform
-                    // Sanity gate: a single-frame translation > 25% of either
-                    // dimension is almost certainly noise (registration locked
-                    // onto a moving subject instead of the background). Drop
-                    // that step — treat it as identity — rather than letting
-                    // bad data poison the accumulated H_{i→0}.
+                    // Sanity gate: a per-frame translation > 25% of either
+                    // dimension is almost certainly noise (registration
+                    // locked onto a moving subject anyway). Drop that step.
                     let maxStepFrac: CGFloat = 0.25
                     let stepOK = abs(cg.tx) < videoSize.width * maxStepFrac
                               && abs(cg.ty) < videoSize.height * maxStepFrac
@@ -139,7 +150,7 @@ actor BallTracker {
                 }
             }
             frameHomographies.append(accumulatedH)
-            previousPB = pixelBuffer
+            previousStabCI = stabCI
 
             // Skip the tracking work for everything before the seed frame —
             // the ball isn't visible / wasn't auto-located there. The
