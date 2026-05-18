@@ -34,7 +34,7 @@
 		CC000000000000000000CC18 /* BowlTraceButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB18; };
 		CC000000000000000000CC19 /* StatPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB19; };
 		CC000000000000000000CC1A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB1C; };
-		CC000000000000000000CC1E /* BallDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB1E; };
+		CC000000000000000000CC1E /* BowlBallDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB1E; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,7 +67,7 @@
 		BB000000000000000000BB1A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BB000000000000000000BB1B /* BowlTrace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BowlTrace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000000000000000000BB1C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Resources/Assets.xcassets"; sourceTree = "<group>"; name = Assets.xcassets; };
-		BB000000000000000000BB1E /* BallDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Resources/BallDetector.mlpackage"; sourceTree = "<group>"; name = BallDetector.mlpackage; };
+		BB000000000000000000BB1E /* BowlBallDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Resources/BowlBallDetector.mlpackage"; sourceTree = "<group>"; name = BowlBallDetector.mlpackage; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -95,7 +95,7 @@
 				AA000000000000000000AA0B /* Export */,
 				AA000000000000000000AA0C /* UI */,
 				BB000000000000000000BB1C /* Assets.xcassets */,
-				BB000000000000000000BB1E /* BallDetector.mlpackage */,
+				BB000000000000000000BB1E /* BowlBallDetector.mlpackage */,
 				BB000000000000000000BB1A /* Info.plist */,
 			);
 			path = BowlTrace;
@@ -316,7 +316,7 @@
 				CC000000000000000000CC17 /* ResultPreviewView.swift in Sources */,
 				CC000000000000000000CC18 /* BowlTraceButtonStyle.swift in Sources */,
 				CC000000000000000000CC19 /* StatPillView.swift in Sources */,
-				CC000000000000000000CC1E /* BallDetector.mlpackage in Sources */,
+				CC000000000000000000CC1E /* BowlBallDetector.mlpackage in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

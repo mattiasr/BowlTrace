@@ -32,7 +32,7 @@ The script:
      embeddings are baked into the exported weights.
   3. Exports to CoreML at 640x640. (Run-time inference resolution is
      controlled by Vision; 640 is the standard YOLO input size.)
-  4. Copies the result to `BowlTrace/BowlTrace/Resources/BallDetector.mlpackage`.
+  4. Copies the result to `BowlTrace/BowlTrace/Resources/BowlBallDetector.mlpackage`.
 
 NOTE on licensing
 -----------------
@@ -55,7 +55,10 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 RESOURCES_DIR = PROJECT_ROOT / "BowlTrace" / "BowlTrace" / "Resources"
-TARGET_MODEL = RESOURCES_DIR / "BallDetector.mlmodel"
+# Stem must match `MLBallDetector.modelResourceName`. Not "BallDetector"
+# because that name collides with the hand-written BallDetector.swift class
+# (Xcode auto-generates a Swift wrapper from the .mlpackage stem).
+TARGET_MODEL = RESOURCES_DIR / "BowlBallDetector.mlmodel"
 
 # YOLO-World variants: yolov8{s,m,l,x}-worldv2.pt. The `s` variant is fast
 # (~25MB, ~30ms/frame on Neural Engine) and matched best in the harness;
@@ -129,7 +132,7 @@ def main() -> None:
     # Wipe any previous artifact (either .mlmodel or .mlpackage shape).
     if TARGET_MODEL.exists():
         TARGET_MODEL.unlink()
-    target_package = RESOURCES_DIR / "BallDetector.mlpackage"
+    target_package = RESOURCES_DIR / "BowlBallDetector.mlpackage"
     if target_package.exists():
         shutil.rmtree(target_package)
 
@@ -142,12 +145,12 @@ def main() -> None:
 
     print(f"Done. Wrote {final_path.relative_to(PROJECT_ROOT)}.")
     print()
-    print("The Xcode project already references BallDetector.mlpackage in")
+    print("The Xcode project already references BowlBallDetector.mlpackage in")
     print("'Build Phases > Compile Sources', so the next build will pick it")
     print("up automatically — no manual drag-into-Xcode step needed.")
     print()
     print("Notes:")
-    print(f"  - Expected filename: BallDetector.mlpackage (got {final_path.name}).")
+    print(f"  - Expected filename: BowlBallDetector.mlpackage (got {final_path.name}).")
     if final_path.suffix != ".mlpackage":
         print("    Your export produced .mlmodel instead of .mlpackage; either")
         print("    upgrade coremltools (>=7.1) or rename the pbxproj reference.")

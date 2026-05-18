@@ -16,9 +16,9 @@ Packages/
 Package.resolved
 
 # CoreML model artifacts — downloaded per-clone via Scripts/download-model.py
-BowlTrace/BowlTrace/Resources/BallDetector.mlmodel
-BowlTrace/BowlTrace/Resources/BallDetector.mlmodelc/
-BowlTrace/BowlTrace/Resources/BallDetector.mlpackage/
+BowlTrace/BowlTrace/Resources/BowlBallDetector.mlmodel
+BowlTrace/BowlTrace/Resources/BowlBallDetector.mlmodelc/
+BowlTrace/BowlTrace/Resources/BowlBallDetector.mlpackage/
 
 # Python virtualenvs used by Scripts/
 .venv/

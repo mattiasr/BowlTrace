@@ -22,12 +22,12 @@ jobs:
       - name: Show selected Xcode
         run: xcodebuild -version
 
-      - name: Cache BallDetector.mlpackage
+      - name: Cache BowlBallDetector.mlpackage
         id: cache-model
         uses: actions/cache@v4
         with:
-          path: BowlTrace/BowlTrace/Resources/BallDetector.mlpackage
-          key: balldetector-mlpackage-${{ hashFiles('Scripts/download-model.py') }}
+          path: BowlTrace/BowlTrace/Resources/BowlBallDetector.mlpackage
+          key: bowlballdetector-mlpackage-${{ hashFiles('Scripts/download-model.py') }}
 
       - name: Set up Python
         if: steps.cache-model.outputs.cache-hit != 'true'

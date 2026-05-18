@@ -10,7 +10,7 @@ import os.log
 ///
 /// TODO(licensing): YOLOv8 / Ultralytics ships under AGPL-3.0 which is incompatible
 /// with closed-source App Store distribution. Before shipping, swap the bundled
-/// `BallDetector.mlmodel` for an MIT/Apache-2.0 alternative such as RT-DETR,
+/// `BowlBallDetector.mlpackage` for an MIT/Apache-2.0 alternative such as RT-DETR,
 /// NanoDet, or a hand-trained YOLO-NAS variant. The Swift call sites in this file
 /// are model-agnostic so the swap should be drop-in.
 ///
@@ -22,7 +22,10 @@ final class MLBallDetector: @unchecked Sendable {
     static let sportsBallClassLabel = "sports ball"
 
     /// Resource name of the bundled compiled model (without extension).
-    private static let modelResourceName = "BallDetector"
+    /// Deliberately not "BallDetector" — Xcode auto-generates a Swift class
+    /// named after the model stem when compiling .mlpackage, and that
+    /// generated class would collide with `BallDetector.swift`.
+    private static let modelResourceName = "BowlBallDetector"
 
     /// Minimum Vision confidence required to accept a detection. Tunable.
     var confidenceThreshold: Float
