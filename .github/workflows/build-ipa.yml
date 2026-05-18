@@ -22,6 +22,27 @@ jobs:
       - name: Show selected Xcode
         run: xcodebuild -version
 
+      - name: Cache BallDetector.mlpackage
+        id: cache-model
+        uses: actions/cache@v4
+        with:
+          path: BowlTrace/BowlTrace/Resources/BallDetector.mlpackage
+          key: balldetector-mlpackage-${{ hashFiles('Scripts/download-model.py') }}
+
+      - name: Set up Python
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install YOLO-World export dependencies
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        run: pip install -U "ultralytics>=8.1" "coremltools>=7.1"
+
+      - name: Export YOLO-World to CoreML
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        run: python3 Scripts/download-model.py
+
       - name: Build unsigned .app for iphoneos
         working-directory: BowlTrace
         run: |

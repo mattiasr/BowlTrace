@@ -135,20 +135,24 @@ def main() -> None:
 
     if exported_path.suffix == ".mlpackage":
         shutil.copytree(exported_path, target_package)
-        print(f"Done. Add {target_package.relative_to(PROJECT_ROOT)} to the Xcode")
-        print("project (drag into the Resources group, ensure target membership = BowlTrace).")
+        final_path = target_package
     else:
         shutil.copy2(exported_path, TARGET_MODEL)
-        print(f"Done. Add {TARGET_MODEL.relative_to(PROJECT_ROOT)} to the Xcode")
-        print("project (drag into the Resources group, ensure target membership = BowlTrace).")
+        final_path = TARGET_MODEL
 
+    print(f"Done. Wrote {final_path.relative_to(PROJECT_ROOT)}.")
     print()
-    print("Next steps:")
-    print("  1. Open BowlTrace.xcodeproj and verify the model file is in")
-    print("     'Build Phases > Copy Bundle Resources'.")
-    print("  2. Build & run — MLBallDetector will pick it up automatically.")
-    print("  3. If you see 'ML ball detector unavailable' in the console, the")
-    print("     file is not in the app bundle.")
+    print("The Xcode project already references BallDetector.mlpackage in")
+    print("'Build Phases > Compile Sources', so the next build will pick it")
+    print("up automatically — no manual drag-into-Xcode step needed.")
+    print()
+    print("Notes:")
+    print(f"  - Expected filename: BallDetector.mlpackage (got {final_path.name}).")
+    if final_path.suffix != ".mlpackage":
+        print("    Your export produced .mlmodel instead of .mlpackage; either")
+        print("    upgrade coremltools (>=7.1) or rename the pbxproj reference.")
+    print("  - On first device run, watch the Xcode console: 'ML ball detector")
+    print("    unavailable' means the file did not make it into the bundle.")
 
 
 if __name__ == "__main__":
