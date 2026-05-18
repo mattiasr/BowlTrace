@@ -531,9 +531,35 @@ actor BallTracker {
             return nil
         }
 
+        // Sub-pixel refinement: fit a parabola through (peakIdx-1, peak,
+        // peakIdx+1) and find the analytic maximum. Without this the peak
+        // column is quantized to integer X — camera pans of, say, 1.6 px
+        // per frame round to 1 or 2 px and the accumulated error shows up
+        // as a residual drift in the same direction as the pan.
+        let leftRefined = parabolicSubpixelPeak(in: colSum, around: leftBestX)
+        let rightRefined = parabolicSubpixelPeak(in: colSum, around: rightBestX)
+
         return (
-            left: CGFloat(leftBestX) / CGFloat(W),
-            right: CGFloat(rightBestX) / CGFloat(W)
+            left: leftRefined / CGFloat(W),
+            right: rightRefined / CGFloat(W)
         )
+    }
+
+    /// Parabolic interpolation around a discrete peak: fits `y = a(x - p)² + c`
+    /// through three samples centred on `peakIdx` and returns the sub-pixel
+    /// X of the analytic maximum. Falls back to the integer index at the
+    /// array boundary or when the curvature is degenerate.
+    private func parabolicSubpixelPeak(in values: [Int], around peakIdx: Int) -> CGFloat {
+        guard peakIdx > 0, peakIdx < values.count - 1 else { return CGFloat(peakIdx) }
+        let y0 = Double(values[peakIdx - 1])
+        let y1 = Double(values[peakIdx])
+        let y2 = Double(values[peakIdx + 1])
+        let denom = 2 * (2 * y1 - y0 - y2)
+        guard abs(denom) > 1e-6 else { return CGFloat(peakIdx) }
+        let offset = (y0 - y2) / denom
+        // Clamp offset to [-1, 1] in case the three samples are nearly
+        // collinear and `offset` blows up.
+        let clamped = max(-1.0, min(1.0, offset))
+        return CGFloat(peakIdx) + CGFloat(clamped)
     }
 }
