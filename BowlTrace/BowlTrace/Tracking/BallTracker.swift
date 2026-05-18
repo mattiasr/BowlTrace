@@ -7,6 +7,21 @@ actor BallTracker {
     private let maxFrameGap = 5
     private let smoothingAlpha: Double = 0.4
 
+    /// Tail-trim parameters — see `trimStationaryTail`. These mirror the
+    /// `--stop-min-velocity` / `--stop-streak` defaults in
+    /// `Scripts/trajectory_lab.py` that were validated against `bowl1.mp4`.
+    private let stopMinVelocity: Double = 0.001       // avg per-frame disp
+    private let stopStreak: Int = 10                  // accepted-frame window
+    private let spikeRatio: Double = 4.0              // step > 4× recent avg
+    private let spikeMinStep: Double = 0.015          // absolute floor
+
+    /// Maximum normalized RGB distance between an ML candidate and the
+    /// running appearance reference for the candidate to be accepted as the
+    /// ball. RGB distance is normalized so 0 = identical, 1 = polar opposite
+    /// (e.g. white vs black). 0.3 leaves headroom for lighting / motion blur
+    /// changes while still rejecting "different ball entirely" anchors.
+    private let mlColorMaxDistance: Double = 0.3
+
     /// Re-anchor the VNTrackObjectRequest with a fresh ML detection every Nth
     /// frame so the tracker doesn't drift over long videos.
     private let mlAnchorInterval = 8
@@ -17,11 +32,17 @@ actor BallTracker {
     /// anchor frames but tight enough to reject other balls/pins on the lane.
     private let mlAnchorMaxDistance: CGFloat = 0.15
 
-    private let mlDetector = MLBallDetector(confidenceThreshold: 0.5)
+    /// Confidence at which we trust the ML detector enough to re-anchor the
+    /// optical-flow tracker. 0.15 matches `BallDetector.mlSeedConfidenceThreshold`
+    /// — both were lowered after the Python harness showed that valid
+    /// rolling-phase detections often fall in [0.1, 0.5].
+    private let mlDetector = MLBallDetector(confidenceThreshold: 0.15)
 
     func track(
         in asset: AVURLAsset,
         seedRect: CGRect,
+        seedFrame: Int = 0,
+        referenceColor: SIMD3<Float>? = nil,
         videoSize: CGSize,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> TrajectoryModel {
@@ -37,11 +58,22 @@ actor BallTracker {
         var frameIndex = 0
         var lowConfidenceStreak = 0
         let mlAvailable = mlDetector.isAvailable
+        // Appearance reference: starts from `referenceColor` (sampled by
+        // `BallDetector` at the seed) and EMA-updates on each accepted
+        // tracked frame so it adapts to lighting along the lane.
+        var refColor: SIMD3<Float>? = referenceColor
 
         while let sampleBuffer = output.copyNextSampleBuffer() {
             try Task.checkCancellation()
 
             guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                frameIndex += 1
+                continue
+            }
+
+            // Skip everything before the seed frame — the ball isn't visible
+            // / wasn't auto-located there.
+            if frameIndex < seedFrame {
                 frameIndex += 1
                 continue
             }
@@ -72,6 +104,23 @@ actor BallTracker {
                     )
                     trajectory.points.append(point)
                     previousCenter = center
+
+                    // EMA-update the appearance reference using whatever is
+                    // inside the tracked box. Keeps the colour adapting to
+                    // lighting along the lane.
+                    if let sampled = sampleMeanColor(in: pixelBuffer,
+                                                    normalizedRect: result.boundingBox) {
+                        if let prev = refColor {
+                            let alpha: Float = 0.2
+                            refColor = SIMD3<Float>(
+                                (1 - alpha) * prev.x + alpha * sampled.x,
+                                (1 - alpha) * prev.y + alpha * sampled.y,
+                                (1 - alpha) * prev.z + alpha * sampled.z
+                            )
+                        } else {
+                            refColor = sampled
+                        }
+                    }
                 } else {
                     lowConfidenceStreak += 1
                     if lowConfidenceStreak >= lowConfidenceLimit { break }
@@ -86,7 +135,20 @@ actor BallTracker {
                     let accept: Bool
                     if let predicted = predictedNextCenter(history: trajectory.points,
                                                           fallback: previousCenter) {
-                        accept = distance(predicted, mlCenter) <= mlAnchorMaxDistance
+                        let spatialOK = distance(predicted, mlCenter) <= mlAnchorMaxDistance
+                        // Colour gate: a candidate must look like the ball
+                        // we're tracking. If we have no reference colour
+                        // (heuristic-only seed, model not bundled) we skip
+                        // this gate so the legacy behaviour is preserved.
+                        let colorOK: Bool
+                        if let ref = refColor,
+                           let cand = sampleMeanColor(in: pixelBuffer,
+                                                      normalizedRect: mlRect) {
+                            colorOK = normalizedColorDistance(cand, ref) <= mlColorMaxDistance
+                        } else {
+                            colorOK = true
+                        }
+                        accept = spatialOK && colorOK
                     } else {
                         // No prior history — trust the ML detection.
                         accept = true
@@ -109,6 +171,7 @@ actor BallTracker {
         trajectory.points = interpolateGaps(trajectory.points)
         trajectory.points = medianFilter(trajectory.points)
         trajectory.points = smooth(trajectory.points)
+        trajectory.points = trimStationaryTail(trajectory.points)
         return trajectory
     }
 
@@ -180,6 +243,64 @@ actor BallTracker {
                 confidence: p.confidence
             )
         }
+    }
+
+    /// Drop the trailing portion of the trajectory once the tracker stops
+    /// following the real ball. Two cut-off criteria, whichever fires first
+    /// while walking the points forward:
+    ///
+    /// 1. **Step-spike** — a single frame whose normalized motion exceeds
+    ///    both `spikeMinStep` AND `spikeRatio` × the recent rolling-average
+    ///    step. Marks the moment `VNTrackObjectRequest` (or the ML re-anchor)
+    ///    latches onto a non-ball feature — typically a static red marker on
+    ///    the lane after pin impact.
+    /// 2. **Stationary window** — net displacement over `stopStreak` accepted
+    ///    frames falls below `stopMinVelocity * stopStreak`. Catches the ball
+    ///    coming to rest naturally (gutter, pin pocket).
+    ///
+    /// Ported from `Scripts/trajectory_lab.py::_trim_stationary_tail`.
+    private func trimStationaryTail(_ points: [TrajectoryPoint]) -> [TrajectoryPoint] {
+        guard points.count >= 2 else { return points }
+
+        let minWindowDisplacement = stopMinVelocity * Double(stopStreak)
+        let rollingWindowSize = max(3, stopStreak / 2)
+        var rolling: [Double] = []
+
+        func step(_ a: CGPoint, _ b: CGPoint) -> Double {
+            let dx = Double(b.x - a.x)
+            let dy = Double(b.y - a.y)
+            return (dx * dx + dy * dy).squareRoot()
+        }
+
+        for k in 1..<points.count {
+            let s = step(points[k - 1].normalizedCenter, points[k].normalizedCenter)
+
+            // 1. Step-spike — drop from this frame (the jump destination).
+            if !rolling.isEmpty {
+                let avg = rolling.reduce(0, +) / Double(rolling.count)
+                if s >= spikeMinStep && s > spikeRatio * max(avg, 1e-6) {
+                    return Array(points.prefix(k))
+                }
+            }
+
+            // 2. Stationary window — drop from the start of the slow patch.
+            if k >= stopStreak {
+                let net = step(
+                    points[k - stopStreak].normalizedCenter,
+                    points[k].normalizedCenter
+                )
+                if net < minWindowDisplacement {
+                    return Array(points.prefix(k - stopStreak + 1))
+                }
+            }
+
+            rolling.append(s)
+            if rolling.count > rollingWindowSize {
+                rolling.removeFirst()
+            }
+        }
+
+        return points
     }
 
     private func interpolateGaps(_ points: [TrajectoryPoint]) -> [TrajectoryPoint] {

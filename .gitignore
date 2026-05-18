@@ -25,3 +25,14 @@ BowlTrace/BowlTrace/Resources/BallDetector.mlpackage/
 venv/
 __pycache__/
 *.pyc
+
+# Output of Scripts/trajectory_lab.py (annotated MP4s + JSON dumps,
+# debug frame snapshots, downloaded model weights cached by ultralytics).
+Scripts/lab-out/
+Scripts/bowl1.frame*.png
+yolov*.pt
+yolov*.mlpackage/
+yolov*.mlmodel
+
+# Claude Code session state
+.claude/

@@ -144,7 +144,7 @@ struct HomeView: View {
             let asset = try await VideoAsset.load(from: videoURL)
 
             appState.updateProgress(0.3, stage: .locatingBall)
-            guard let seedRect = try await detector.detect(in: AVURLAsset(url: asset.url)) else {
+            guard let seed = try await detector.detect(in: AVURLAsset(url: asset.url)) else {
                 appState.triggerManualSeed(videoURL: videoURL)
                 return
             }
@@ -153,7 +153,9 @@ struct HomeView: View {
             let tracker = BallTracker()
             let trajectory = try await tracker.track(
                 in: AVURLAsset(url: asset.url),
-                seedRect: seedRect,
+                seedRect: seed.rect,
+                seedFrame: seed.frameIndex,
+                referenceColor: seed.referenceColor,
                 videoSize: asset.naturalSize,
                 progressHandler: { progress in
                     Task { @MainActor in

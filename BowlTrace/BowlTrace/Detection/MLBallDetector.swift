@@ -45,6 +45,12 @@ final class MLBallDetector: @unchecked Sendable {
     /// `true` when the underlying CoreML model is available and detection can run.
     var isAvailable: Bool { visionModel != nil }
 
+    /// One ball detection above the configured confidence threshold.
+    struct Detection: Sendable {
+        let rect: CGRect
+        let confidence: Float
+    }
+
     /// Runs the model on the supplied pixel buffer and returns the highest-confidence
     /// "sports ball" detection in Vision-normalized coordinates, or nil.
     ///
@@ -54,6 +60,13 @@ final class MLBallDetector: @unchecked Sendable {
     ///   - orientation: CGImagePropertyOrientation of the buffer. Defaults to `.up`.
     func detect(in pixelBuffer: CVPixelBuffer,
                 orientation: CGImagePropertyOrientation = .up) -> CGRect? {
+        detectWithConfidence(in: pixelBuffer, orientation: orientation)?.rect
+    }
+
+    /// Same as `detect(in:)` but also returns the detection confidence so
+    /// callers can build appearance/chain heuristics.
+    func detectWithConfidence(in pixelBuffer: CVPixelBuffer,
+                              orientation: CGImagePropertyOrientation = .up) -> Detection? {
         guard let visionModel else { return nil }
 
         let request = VNCoreMLRequest(model: visionModel)
@@ -68,24 +81,23 @@ final class MLBallDetector: @unchecked Sendable {
             return nil
         }
 
-        return bestSportsBall(in: request.results)
+        return bestSportsBallDetection(in: request.results)
     }
 
     // MARK: - Result parsing
 
-    /// Picks the highest-confidence "sports ball" detection above `confidenceThreshold`.
-    /// Handles both `VNRecognizedObjectObservation` (standard YOLO export) and
-    /// `VNCoreMLFeatureValueObservation` outputs for forward-compatibility.
-    private func bestSportsBall(in results: [VNObservation]?) -> CGRect? {
+    /// Picks the highest-confidence "ball-shaped" detection above `confidenceThreshold`.
+    /// Handles both COCO `sports ball` labels and YOLO-World prompts like
+    /// `bowling ball` / `red ball` — the `identifier.contains("ball")` check
+    /// matches them all.
+    private func bestSportsBallDetection(in results: [VNObservation]?) -> Detection? {
         guard let results else { return nil }
 
-        var best: (rect: CGRect, confidence: Float)?
+        var best: Detection?
 
         for observation in results {
             guard let recognized = observation as? VNRecognizedObjectObservation else { continue }
             guard let topLabel = recognized.labels.first else { continue }
-            // Some YOLO exports use the COCO label string directly; others use
-            // numeric indices. Accept either.
             let identifier = topLabel.identifier.lowercased()
             let isBall = identifier == Self.sportsBallClassLabel
                 || identifier == "32" // COCO class index for sports ball
@@ -93,11 +105,12 @@ final class MLBallDetector: @unchecked Sendable {
             guard isBall else { continue }
             guard topLabel.confidence >= confidenceThreshold else { continue }
             if best == nil || topLabel.confidence > best!.confidence {
-                best = (recognized.boundingBox, topLabel.confidence)
+                best = Detection(rect: recognized.boundingBox,
+                                 confidence: topLabel.confidence)
             }
         }
 
-        return best?.rect
+        return best
     }
 
     // MARK: - Model loading
