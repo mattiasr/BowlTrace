@@ -114,6 +114,140 @@ class PipelineSummary:
 
 
 # ---------------------------------------------------------------------------
+# Stabilization (camera-motion compensation)
+# ---------------------------------------------------------------------------
+#
+# Why: the harness renders the trace by accumulating per-frame detection
+# positions in vision-normalized coords against the current frame's image.
+# When the camera moves (handheld iPhone, slight pan / shake), the same
+# physical lane point lives at different pixel positions across frames —
+# so a trail rendered at fixed normalized coords drifts off the lane as
+# the video plays.
+#
+# Fix: compute a per-frame homography H_{i→0} mapping frame i's coordinate
+# system back to frame 0 (the reference). Each detection is captured in its
+# detection frame's coords; at render time for frame N we apply
+# (H_{N→0})⁻¹ ∘ H_{i→0} to bring every historical point into frame N's view.
+#
+# Homographies are estimated frame-to-frame via Lucas-Kanade optical flow on
+# `goodFeaturesToTrack` corners and RANSAC. The bowler's body motion is an
+# outlier minority on a wide bowling-alley shot, so RANSAC locks onto the
+# static background. When the camera is genuinely stationary the
+# homographies collapse to near-identity and stabilization is a no-op.
+
+# Tuning constants for the LK pyramid + feature re-detection. Values chosen
+# to be robust on a 720x1280 portrait phone frame.
+_LK_MAX_CORNERS = 200
+_LK_QUALITY = 0.01
+_LK_MIN_DISTANCE = 10
+_LK_WIN_SIZE = (21, 21)
+_LK_MAX_LEVEL = 3
+_LK_REDETECT_MIN_POINTS = 60
+_RANSAC_REPROJ_THRESH = 3.0
+
+
+def compute_stabilization(input_path: Path) -> list[np.ndarray]:
+    """Returns a list with one 3x3 homography per frame. ``H[i]`` maps a
+    pixel coordinate in frame ``i`` into frame ``0``'s coordinate system,
+    so points detected at different times can be brought into a common
+    reference. ``H[0]`` is the identity. Always operates on display-oriented
+    frames (matches the canvas the trace is drawn on)."""
+    cap = _open_capture(input_path)
+    rotation = _read_rotation(cap)
+    homographies: list[np.ndarray] = []
+    prev_gray: Optional[np.ndarray] = None
+    prev_pts: Optional[np.ndarray] = None
+    accumulated = np.eye(3, dtype=np.float64)
+
+    lk_params = dict(
+        winSize=_LK_WIN_SIZE,
+        maxLevel=_LK_MAX_LEVEL,
+        criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
+    )
+    feature_params = dict(
+        maxCorners=_LK_MAX_CORNERS,
+        qualityLevel=_LK_QUALITY,
+        minDistance=_LK_MIN_DISTANCE,
+        blockSize=7,
+    )
+
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        frame = _apply_rotation(frame, rotation)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        if prev_gray is None:
+            homographies.append(accumulated.copy())
+            prev_pts = cv2.goodFeaturesToTrack(gray, mask=None, **feature_params)
+            prev_gray = gray
+            continue
+
+        if prev_pts is not None and len(prev_pts) >= 4:
+            next_pts, status, _ = cv2.calcOpticalFlowPyrLK(
+                prev_gray, gray, prev_pts, None, **lk_params
+            )
+            if next_pts is not None and status is not None:
+                ok_mask = status.flatten() == 1
+                good_prev = prev_pts[ok_mask]
+                good_next = next_pts[ok_mask]
+                if len(good_prev) >= 8:
+                    # Homography mapping CURRENT frame -> PREVIOUS frame.
+                    H_step, _inliers = cv2.findHomography(
+                        good_next, good_prev, cv2.RANSAC, _RANSAC_REPROJ_THRESH
+                    )
+                    if H_step is not None:
+                        # Compose: accumulated maps i-1 -> 0, H_step maps i -> i-1.
+                        accumulated = accumulated @ H_step
+                    prev_pts = good_next.reshape(-1, 1, 2)
+                else:
+                    prev_pts = None
+            else:
+                prev_pts = None
+
+        homographies.append(accumulated.copy())
+
+        # Re-detect corners whenever we've lost too many trackers; keeps
+        # accuracy up over longer videos (corners drift off-frame, get
+        # occluded, etc.).
+        if prev_pts is None or len(prev_pts) < _LK_REDETECT_MIN_POINTS:
+            prev_pts = cv2.goodFeaturesToTrack(gray, mask=None, **feature_params)
+        prev_gray = gray
+
+    cap.release()
+    return homographies
+
+
+def _transform_points_norm(points_norm: list[tuple[float, float]],
+                           src_H_to_ref: np.ndarray,
+                           dst_H_to_ref: np.ndarray,
+                           frame_w: int,
+                           frame_h: int) -> list[tuple[float, float]]:
+    """Move a list of vision-normalized points from a source frame's coord
+    system to a destination frame's. Both H matrices are *_i → reference_;
+    composition is ``H_dst⁻¹ @ H_src``. Returns vision-norm coords (still
+    bottom-left origin, [0,1])."""
+    if not points_norm:
+        return []
+    # Vision norm → pixel coords (top-left origin).
+    pixel = np.array([[(x * frame_w, (1 - y) * frame_h)] for x, y in points_norm],
+                     dtype=np.float32)
+    # Single composed homography.
+    try:
+        H_dst_inv = np.linalg.inv(dst_H_to_ref)
+    except np.linalg.LinAlgError:
+        return points_norm  # fall back to unstabilized
+    H = H_dst_inv @ src_H_to_ref
+    transformed = cv2.perspectiveTransform(pixel, H)
+    out: list[tuple[float, float]] = []
+    for p in transformed:
+        px, py = float(p[0][0]), float(p[0][1])
+        out.append((px / frame_w, 1.0 - py / frame_h))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Video I/O helpers
 # ---------------------------------------------------------------------------
 
@@ -928,7 +1062,12 @@ def render_annotated_video(input_path: Path,
                            output_path: Path,
                            records: list[FrameRecord],
                            meta: dict,
-                           mode: str) -> None:
+                           mode: str,
+                           homographies: Optional[list[np.ndarray]] = None) -> None:
+    """Render the annotated MP4. When `homographies` is provided, each
+    historical trail point is moved through `H_N⁻¹ ∘ H_i` so it lands on
+    the lane position it physically had at detection time — i.e. the trace
+    stays anchored to the world while the camera moves."""
     cap = _open_capture(input_path)
     fps = meta["fps"]
     rotation = meta["rotation"]
@@ -944,26 +1083,39 @@ def render_annotated_video(input_path: Path,
     if not writer.isOpened():
         raise RuntimeError(f"could not open output {output_path}")
 
-    accepted_running: list[tuple[float, float]] = []
-    smoothed_running: list[tuple[float, float]] = []
+    # Pre-build the full trail (with source frame indices) once. Each render
+    # tick filters to "points whose source frame ≤ current frame" and, when
+    # stabilization is enabled, transforms them through the appropriate
+    # homography composition.
+    accepted_indexed: list[tuple[int, float, float]] = []
+    smoothed_indexed: list[tuple[int, float, float]] = []
+    for rec in records:
+        if rec.raw_center is not None and rec.accepted:
+            mapped = _vision_norm_to_display(
+                rec.raw_center, mode, rotation,
+                meta["stored_size"], meta["display_size"],
+            )
+            accepted_indexed.append((rec.frame_index, mapped[0], mapped[1]))
+        if rec.smoothed_center is not None:
+            mapped = _vision_norm_to_display(
+                rec.smoothed_center, mode, rotation,
+                meta["stored_size"], meta["display_size"],
+            )
+            smoothed_indexed.append((rec.frame_index, mapped[0], mapped[1]))
 
     by_index = {r.frame_index: r for r in records}
     frame_index = 0
+    stabilized = homographies is not None
 
     while True:
         ok, frame = cap.read()
         if not ok:
             break
         display_frame = _apply_rotation(frame, rotation)
-        # Canvas to draw on.
         canvas = display_frame.copy()
 
         rec = by_index.get(frame_index)
         if rec is not None and rec.raw_box is not None:
-            # Draw the detection bbox. Whether the box was computed on the
-            # stored or display frame, we need to map it onto the display
-            # canvas so the user can see the geometry the detector actually
-            # saw — *after* rotation correction in 'ios-simulate' mode.
             box_norm_in_detect_frame = rec.raw_box
             box_pixel = _box_to_display_pixels(
                 box_norm_in_detect_frame, mode, rotation,
@@ -973,20 +1125,21 @@ def render_annotated_video(input_path: Path,
             color = COLOR_DETECTION_BOX if rec.accepted else COLOR_RUNNERUP_BOX
             cv2.rectangle(canvas, (x, y), (x + w, y + h), color, 2)
 
-        # Trajectory rendering — same Vision-normalized coords, but mapped to
-        # different canvas depending on mode.
-        if rec is not None and rec.raw_center is not None and rec.accepted:
-            mapped = _vision_norm_to_display(
-                rec.raw_center, mode, rotation,
-                meta["stored_size"], meta["display_size"],
+        # Trail for THIS rendered frame: filter to source-frame ≤ frame_index,
+        # then apply stabilization if available.
+        visible_accepted = [(fi, x, y) for fi, x, y in accepted_indexed if fi <= frame_index]
+        visible_smoothed = [(fi, x, y) for fi, x, y in smoothed_indexed if fi <= frame_index]
+
+        if stabilized:
+            accepted_running = _stabilize_trail(
+                visible_accepted, homographies, frame_index, canvas_w, canvas_h
             )
-            accepted_running.append(mapped)
-        if rec is not None and rec.smoothed_center is not None:
-            mapped = _vision_norm_to_display(
-                rec.smoothed_center, mode, rotation,
-                meta["stored_size"], meta["display_size"],
+            smoothed_running = _stabilize_trail(
+                visible_smoothed, homographies, frame_index, canvas_w, canvas_h
             )
-            smoothed_running.append(mapped)
+        else:
+            accepted_running = [(x, y) for _, x, y in visible_accepted]
+            smoothed_running = [(x, y) for _, x, y in visible_smoothed]
 
         _draw_polyline(canvas, accepted_running, COLOR_RAW_TRACE, 2)
         _draw_polyline(canvas, smoothed_running, COLOR_SMOOTH_TRACE, 3)
@@ -1007,12 +1160,45 @@ def render_annotated_video(input_path: Path,
             state = "accepted" if rec.accepted else f"rejected ({rec.reject_reason})"
         _draw_hud(canvas, [
             f"frame {frame_index}  fps {fps:.1f}",
-            f"mode {mode}  rotation {rotation}",
+            f"mode {mode}  rotation {rotation}{'  stabilized' if stabilized else ''}",
             f"det {det_count}  conf {conf_str}  {state}",
         ])
 
         writer.write(canvas)
         frame_index += 1
+
+
+def _stabilize_trail(visible: list[tuple[int, float, float]],
+                     homographies: list[np.ndarray],
+                     current_frame: int,
+                     canvas_w: int,
+                     canvas_h: int) -> list[tuple[float, float]]:
+    """Transform each `(source_frame, vx, vy)` so it appears at the right
+    world position in `current_frame`'s coordinate system. Returns
+    vision-norm coords (bottom-left origin) on the display canvas."""
+    if not visible:
+        return []
+    last_idx = len(homographies) - 1
+    H_dst = homographies[min(current_frame, last_idx)]
+    try:
+        H_dst_inv = np.linalg.inv(H_dst)
+    except np.linalg.LinAlgError:
+        return [(x, y) for _, x, y in visible]
+
+    out: list[tuple[float, float]] = []
+    for src_frame, vx, vy in visible:
+        H_src = homographies[min(src_frame, last_idx)]
+        composed = H_dst_inv @ H_src
+        px = vx * canvas_w
+        py = (1.0 - vy) * canvas_h
+        homog = composed @ np.array([px, py, 1.0])
+        if abs(homog[2]) < 1e-9:
+            out.append((vx, vy))
+            continue
+        new_px = float(homog[0] / homog[2])
+        new_py = float(homog[1] / homog[2])
+        out.append((new_px / canvas_w, 1.0 - new_py / canvas_h))
+    return out
 
     cap.release()
     writer.release()
@@ -1140,7 +1326,8 @@ def run(input_path: Path,
         auto_seed: bool = False,
         auto_seed_min_conf: float = 0.5,
         auto_seed_chain: int = 3,
-        auto_seed_min_motion: float = 0.01) -> PipelineSummary:
+        auto_seed_min_motion: float = 0.01,
+        stabilize: bool = False) -> PipelineSummary:
     t0 = time.time()
     if detector_kind == "hough":
         detector = HoughBallDetector(
@@ -1217,8 +1404,15 @@ def run(input_path: Path,
     print("[2/3] Post-processing trajectory (gap interp + median + EMA) …")
     records = post_process_trajectory(records)
 
+    stab_homographies: Optional[list[np.ndarray]] = None
+    if stabilize:
+        print("[*] Computing camera-stabilization homographies "
+              "(LK optical flow + RANSAC) …")
+        stab_homographies = compute_stabilization(input_path)
+
     print(f"[3/3] Rendering annotated video -> {output_path}")
-    render_annotated_video(input_path, output_path, records, meta, mode)
+    render_annotated_video(input_path, output_path, records, meta, mode,
+                           homographies=stab_homographies)
 
     # JSON dump (skip raw_box arrays of None, keep records small).
     json_path.write_text(json.dumps(
@@ -1448,6 +1642,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help=("Minimum total normalized displacement across the auto-seed "
               "chain. Rejects static false-positives (e.g. red signs)."),
     )
+    parser.add_argument(
+        "--stabilize",
+        action="store_true",
+        help=("Compensate for camera motion when rendering the trace: "
+              "compute per-frame homographies (LK optical flow + RANSAC) so "
+              "each trail point is drawn at the lane position it physically "
+              "had at detection time, not at a fixed image position. Adds "
+              "one extra video read (~5-10s for a 9-second clip)."),
+    )
     return parser.parse_args(argv)
 
 
@@ -1509,7 +1712,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     # Default output stems carry the detector tag so YOLO and Hough runs
     # don't clobber each other.
-    tag = args.detector + ("-seeded" if seed_vision else "")
+    tag = args.detector + ("-seeded" if seed_vision else "") + ("-stab" if args.stabilize else "")
     out_dir = args.out_dir or (args.input.parent / "lab-out")
     out_dir.mkdir(parents=True, exist_ok=True)
     out_video = args.output or (out_dir / f"{stem}.{args.mode}.{tag}.annotated.mp4")
@@ -1538,6 +1741,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         auto_seed_min_conf=max(0.0, float(args.auto_seed_min_conf)),
         auto_seed_chain=max(1, int(args.auto_seed_chain)),
         auto_seed_min_motion=max(0.0, float(args.auto_seed_min_motion)),
+        stabilize=bool(args.stabilize),
     )
 
     print()
