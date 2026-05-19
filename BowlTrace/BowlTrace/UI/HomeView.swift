@@ -3,10 +3,23 @@ import PhotosUI
 import AVFoundation
 
 struct HomeView: View {
+    /// Default ball-finding mode shown in the import chooser. Auto-detect is
+    /// the preferred path — the chooser is essentially an escape hatch for
+    /// videos the detector can't handle.
+    enum ImportSeedMode: String {
+        case autoDetect
+        case manual
+
+        static let `default`: ImportSeedMode = .autoDetect
+    }
+
     @EnvironmentObject var appState: AppState
     @State private var logoPulsing = false
     @State private var importedItem: PhotosPickerItem?
     @State private var pendingImportURL: URL?
+    /// Remembers the last-used seed mode across launches. Initialised to
+    /// `.autoDetect` so first-time users land on the auto-detect path.
+    @AppStorage("import.seedMode") private var selectedSeedModeRaw: String = ImportSeedMode.default.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -84,23 +97,31 @@ struct HomeView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button("Auto-detect") {
+            // Auto-detect is the default action — listed first so it's the
+            // primary path and bound to `.defaultAction` for accessibility
+            // (VoiceOver / keyboard "default" focus, hardware-keyboard return).
+            Button("Auto-detect (recommended)") {
                 guard let url = pendingImportURL else { return }
+                selectedSeedModeRaw = ImportSeedMode.autoDetect.rawValue
                 pendingImportURL = nil
                 importedItem = nil
                 appState.startProcessing(videoURL: url)
                 Task { await runDetectionPipeline(videoURL: url) }
             }
+            .keyboardShortcut(.defaultAction)
             Button("Pick frame manually") {
                 guard let url = pendingImportURL else { return }
+                selectedSeedModeRaw = ImportSeedMode.manual.rawValue
                 pendingImportURL = nil
                 importedItem = nil
-                appState.triggerManualSeed(videoURL: url)
+                appState.triggerManualSeed(videoURL: url, reason: .userChoseManual)
             }
             Button("Cancel", role: .cancel) {
                 pendingImportURL = nil
                 importedItem = nil
             }
+        } message: {
+            Text("Auto-detect uses on-device CoreML to find the ball — fastest and works for most videos. Pick manually if auto-detect can't find it.")
         }
     }
 
@@ -123,7 +144,7 @@ struct HomeView: View {
             let asset = try await VideoAsset.load(from: videoURL)
 
             appState.updateProgress(0.3, stage: .locatingBall)
-            guard let seedRect = try await detector.detect(in: AVURLAsset(url: asset.url)) else {
+            guard let seed = try await detector.detect(in: AVURLAsset(url: asset.url)) else {
                 appState.triggerManualSeed(videoURL: videoURL)
                 return
             }
@@ -132,7 +153,9 @@ struct HomeView: View {
             let tracker = BallTracker()
             let trajectory = try await tracker.track(
                 in: AVURLAsset(url: asset.url),
-                seedRect: seedRect,
+                seedRect: seed.rect,
+                seedFrame: seed.frameIndex,
+                referenceColor: seed.referenceColor,
                 videoSize: asset.naturalSize,
                 progressHandler: { progress in
                     Task { @MainActor in

@@ -2,35 +2,293 @@ import AVFoundation
 import Vision
 import CoreImage
 
+/// Reads the BGRA pixel buffer inside `normalizedRect` (Vision-style,
+/// bottom-left origin) and returns the channel-wise mean as RGB in
+/// `[0, 255]`. Returns nil if the buffer can't be locked or the rect
+/// collapses to zero pixels. Free function so both `BallDetector` (actor)
+/// and `BallTracker` (actor) can call it without crossing actor boundaries.
+///
+/// `orientation` is the Vision orientation the caller passed to its
+/// detection/tracking requests. When the orientation rotates the buffer
+/// (anything other than `.up`), the supplied rect is in *display* coords
+/// but the underlying `CVPixelBuffer` is still in storage orientation, so
+/// we rotate the rect back to storage before reading pixels.
+func sampleMeanColor(in pixelBuffer: CVPixelBuffer,
+                     normalizedRect: CGRect,
+                     orientation: CGImagePropertyOrientation = .up) -> SIMD3<Float>? {
+    CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+    guard let base = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+
+    let width = CVPixelBufferGetWidth(pixelBuffer)
+    let height = CVPixelBufferGetHeight(pixelBuffer)
+    let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+    let storageRect = rectInStorageOrientation(normalizedRect,
+                                               displayOrientation: orientation)
+
+    // Vision: bottom-left origin. Pixel: top-left. Flip Y.
+    let pxMinX = max(0, Int(storageRect.minX * CGFloat(width)))
+    let pxMaxX = min(width, Int(storageRect.maxX * CGFloat(width)))
+    let pxMinY = max(0, Int((1 - storageRect.maxY) * CGFloat(height)))
+    let pxMaxY = min(height, Int((1 - storageRect.minY) * CGFloat(height)))
+    guard pxMaxX > pxMinX, pxMaxY > pxMinY else { return nil }
+
+    let buf = base.assumingMemoryBound(to: UInt8.self)
+    var rSum = 0, gSum = 0, bSum = 0, count = 0
+    // 32BGRA layout: B, G, R, A per pixel.
+    for y in pxMinY..<pxMaxY {
+        let rowStart = y * bytesPerRow
+        for x in pxMinX..<pxMaxX {
+            let offset = rowStart + x * 4
+            bSum += Int(buf[offset])
+            gSum += Int(buf[offset + 1])
+            rSum += Int(buf[offset + 2])
+            count += 1
+        }
+    }
+    guard count > 0 else { return nil }
+    let n = Float(count)
+    return SIMD3<Float>(Float(rSum) / n, Float(gSum) / n, Float(bSum) / n)
+}
+
+/// Euclidean RGB distance scaled to `[0, 1]` (max distance = sqrt(3·255²)).
+func normalizedColorDistance(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Double {
+    let d = a - b
+    let raw = (d * d).sum().squareRoot()
+    let maxDist = Float(3 * 255 * 255).squareRoot()
+    return Double(min(raw / maxDist, 1.0))
+}
+
+/// Result of auto-detection: where to seed the tracker AND which frame to
+/// start tracking at. The frame index matters because for many real bowling
+/// clips the ball isn't visible at frame 0 (occluded behind the bowler
+/// during setup) — seeding at frame 0 with a wrong feature ruins the entire
+/// downstream trajectory.
+struct BallSeed: Sendable {
+    /// Vision-normalized bounding box (bottom-left origin, [0,1]).
+    let rect: CGRect
+    /// Frame index in the source video where this seed lives. `BallTracker`
+    /// skips frames before this index.
+    let frameIndex: Int
+    /// Mean RGB sampled inside `rect` at frame `frameIndex`. Each channel in
+    /// `[0, 255]`. nil if the seed wasn't sourced from a live pixel buffer
+    /// (e.g. heuristic-only fallback or manual tap path). Consumers can use
+    /// this as the ball's appearance reference to bias data association
+    /// without assuming a hardcoded colour like "red".
+    let referenceColor: SIMD3<Float>?
+}
+
 actor BallDetector {
     private let heuristic = CircleHeuristic()
+    private let mlDetector: MLBallDetector
     private let sampleFrameCount = 15
-    private let confidenceThreshold: Float = 0.45
+    private let heuristicConfidenceThreshold: Float = 0.45
+    /// Min confidence required for an ML detection to anchor anything. Tuned
+    /// against the Python harness (`Scripts/trajectory_lab.py`) on real
+    /// bowling clips: YOLO-World's rolling-phase confidence is often in
+    /// [0.1, 0.5]. A 0.4+ threshold would drop most of the actual roll.
+    private static let mlSeedConfidenceThreshold: Float = 0.15
+    /// Min number of consecutive high-conf frames required to lock in an
+    /// auto-seed. Mirrors `--auto-seed-chain` default in the harness.
+    private let chainLength = 3
+    /// Min total normalized displacement across the chain. Rejects a static
+    /// false-positive (e.g. a red sign on the wall). Mirrors
+    /// `--auto-seed-min-motion`.
+    private let chainMinMotion: CGFloat = 0.01
 
-    func detect(in asset: AVURLAsset) async throws -> CGRect? {
+    init() {
+        self.mlDetector = MLBallDetector(confidenceThreshold: Self.mlSeedConfidenceThreshold)
+    }
+
+    /// Public entry-point. Returns a `BallSeed` (rect + frame index +
+    /// sampled colour) or nil if no usable seed could be found. Cascading
+    /// strategy (best → fallback):
+    ///   1. ML chain-scan: scan dense frames, pick the first frame of the
+    ///      longest moving high-confidence chain. Mirrors the harness's
+    ///      `--auto-seed` behaviour and naturally skips the setup pose.
+    ///   2. ML "largest hit" on sparse sampled frames (legacy behaviour).
+    ///   3. `CircleHeuristic` contour detection on sparse sampled frames.
+    func detect(in asset: AVURLAsset) async throws -> BallSeed? {
         let duration = try await asset.load(.duration)
         guard duration.seconds > 0.5 else { throw AppError.videoTooShort }
 
+        // `mlChainScan` reads raw sensor-orientation frames via AVAssetReader, so
+        // it must tell Vision the display orientation. The sparse-sample path
+        // uses AVAssetImageGenerator with `appliesPreferredTrackTransform = true`,
+        // which produces already-rotated (display) frames, so `.up` is correct
+        // there.
+        var orientation: CGImagePropertyOrientation = .up
+        if let track = try? await asset.loadTracks(withMediaType: .video).first,
+           let transform = try? await track.load(.preferredTransform) {
+            orientation = cgImageOrientation(for: transform)
+        }
+
+        // Pass 1: ML chain scan across the whole video.
+        if mlDetector.isAvailable {
+            if let seed = try? await mlChainScan(asset: asset, orientation: orientation) {
+                return seed
+            }
+        }
+
+        // Pass 2 & 3 share the same sparse sample set.
         let frames = try await extractFrames(from: asset, count: sampleFrameCount)
 
+        if mlDetector.isAvailable {
+            var best: (rect: CGRect, area: CGFloat, color: SIMD3<Float>?)?
+            for pixelBuffer in frames {
+                guard let rect = mlDetector.detect(in: pixelBuffer) else { continue }
+                let area = rect.width * rect.height
+                if best == nil || area > best!.area {
+                    let color = sampleMeanColor(in: pixelBuffer, normalizedRect: rect)
+                    best = (rect, area, color)
+                }
+            }
+            if let best {
+                return BallSeed(rect: best.rect, frameIndex: 0, referenceColor: best.color)
+            }
+        }
+
+        // Pass 3: contour-based circle heuristic fallback.
         var bestCandidate: CircleCandidate?
         var bestConfidence: Float = 0
+        var bestBuffer: CVPixelBuffer?
 
         for pixelBuffer in frames {
             if let candidate = heuristic.detect(in: pixelBuffer),
                candidate.confidence > bestConfidence {
                 bestConfidence = candidate.confidence
                 bestCandidate = candidate
+                bestBuffer = pixelBuffer
             }
             if bestConfidence > 0.80 { break }
         }
 
-        guard let candidate = bestCandidate, candidate.confidence > confidenceThreshold else {
+        guard let candidate = bestCandidate, candidate.confidence > heuristicConfidenceThreshold else {
             return nil
         }
 
-        return candidate.boundingBox
+        let color = bestBuffer.flatMap {
+            sampleMeanColor(in: $0, normalizedRect: candidate.boundingBox)
+        }
+        return BallSeed(rect: candidate.boundingBox, frameIndex: 0, referenceColor: color)
     }
+
+    /// Dense-frame scan: read sequentially via `AVAssetReader`, run the ML
+    /// detector on every frame, group consecutive high-conf hits into chains,
+    /// return the first frame of the longest chain that has at least
+    /// `chainMinMotion` total displacement. Discards static false-positives
+    /// (e.g. a red sign on the wall) by demanding motion across the chain.
+    /// Returns nil if no qualifying chain exists.
+    private func mlChainScan(asset: AVURLAsset,
+                             orientation: CGImagePropertyOrientation) async throws -> BallSeed? {
+        let reader = try AVAssetReader(asset: asset)
+        guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
+            return nil
+        }
+        let outputSettings: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ]
+        let output = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: outputSettings)
+        output.alwaysCopiesSampleData = false
+        reader.add(output)
+        reader.startReading()
+
+        // Collect detections in time order.
+        struct Hit { let frameIndex: Int; let rect: CGRect; let confidence: Float; let color: SIMD3<Float>? }
+        var hits: [Hit] = []
+
+        var frameIndex = 0
+        while let sampleBuffer = output.copyNextSampleBuffer() {
+            try Task.checkCancellation()
+            guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                frameIndex += 1; continue
+            }
+            if let detection = mlDetector.detectWithConfidence(in: pixelBuffer,
+                                                               orientation: orientation) {
+                let color = sampleMeanColor(in: pixelBuffer,
+                                            normalizedRect: detection.rect,
+                                            orientation: orientation)
+                hits.append(Hit(frameIndex: frameIndex,
+                                rect: detection.rect,
+                                confidence: detection.confidence,
+                                color: color))
+            }
+            frameIndex += 1
+        }
+        reader.cancelReading()
+
+        if hits.isEmpty { return nil }
+
+        // Group into chains of consecutive frame indices.
+        var chains: [[Hit]] = []
+        var current: [Hit] = []
+        for h in hits {
+            if current.isEmpty || h.frameIndex == current.last!.frameIndex + 1 {
+                current.append(h)
+            } else {
+                chains.append(current)
+                current = [h]
+            }
+        }
+        if !current.isEmpty { chains.append(current) }
+
+        // Score each chain by length × directness, where directness =
+        // (net displacement) / (total path length). This replaces the
+        // previous "longest chain" winner selection, which was biased
+        // against left-handed bowlers: their ML chain is often shorter
+        // and noisier (body occlusion during the approach, ball exits the
+        // frame on the left gutter sooner), so the "longest" winner could
+        // end up being a false-positive chain elsewhere in the frame
+        // (lane logos, the bowler walking up). Directness is symmetric
+        // in motion direction — works for left- and right-handed bowlers
+        // and for portrait or landscape framing — and rewards the
+        // monotonic motion signature of a real ball roll over the
+        // wobble of false-positive chains.
+        // Minimum directness (net displacement / path length) for a chain
+        // to be considered a real ball roll. Lowered from 0.6 to 0.4 after
+        // user testing: clean rolls run 0.7+, but hook shots and chains
+        // that have brief noisy detections in the middle of an otherwise
+        // straight roll drop to 0.4-0.6. A 0.6 floor was rejecting some
+        // valid left-hander rolls and forcing auto-detect to bail. 0.4
+        // still filters out wobbly false-positives (lane logos / bowler
+        // hand chains run 0.2-0.3).
+        let minDirectness: CGFloat = 0.4
+        struct ChainScore { let chain: [Hit]; let directness: CGFloat }
+        let scored: [ChainScore] = chains.compactMap { chain -> ChainScore? in
+            guard chain.count >= chainLength else { return nil }
+            let xs = chain.map(\.rect.midX)
+            let ys = chain.map(\.rect.midY)
+            let xSpread = (xs.max() ?? 0) - (xs.min() ?? 0)
+            let ySpread = (ys.max() ?? 0) - (ys.min() ?? 0)
+            let spread = (xSpread * xSpread + ySpread * ySpread).squareRoot()
+            guard spread >= chainMinMotion else { return nil }
+            let dxNet = (xs.last ?? 0) - (xs.first ?? 0)
+            let dyNet = (ys.last ?? 0) - (ys.first ?? 0)
+            let netDisp = (dxNet * dxNet + dyNet * dyNet).squareRoot()
+            var pathLen: CGFloat = 0
+            for i in 1..<chain.count {
+                let dx = chain[i].rect.midX - chain[i-1].rect.midX
+                let dy = chain[i].rect.midY - chain[i-1].rect.midY
+                pathLen += (dx * dx + dy * dy).squareRoot()
+            }
+            let directness = pathLen > 0 ? netDisp / pathLen : 0
+            guard directness >= minDirectness else { return nil }
+            return ChainScore(chain: chain, directness: directness)
+        }
+        guard !scored.isEmpty else { return nil }
+
+        // Winner = highest (count × directness). Long AND monotonic.
+        let winner = scored.max { a, b in
+            let aScore = CGFloat(a.chain.count) * a.directness
+            let bScore = CGFloat(b.chain.count) * b.directness
+            return aScore < bScore
+        }!.chain
+        let first = winner[0]
+        return BallSeed(rect: first.rect,
+                        frameIndex: first.frameIndex,
+                        referenceColor: first.color)
+    }
+
 
     private func extractFrames(from asset: AVURLAsset, count: Int) async throws -> [CVPixelBuffer] {
         let duration = try await asset.load(.duration)

@@ -3,7 +3,13 @@ name: Build unsigned IPA
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -15,6 +21,27 @@ jobs:
 
       - name: Show selected Xcode
         run: xcodebuild -version
+
+      - name: Cache BowlBallDetector.mlpackage
+        id: cache-model
+        uses: actions/cache@v4
+        with:
+          path: BowlTrace/BowlTrace/Resources/BowlBallDetector.mlpackage
+          key: bowlballdetector-mlpackage-${{ hashFiles('Scripts/download-model.py') }}
+
+      - name: Set up Python
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install YOLO-World export dependencies
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        run: pip install -U "ultralytics>=8.1" "coremltools>=7.1"
+
+      - name: Export YOLO-World to CoreML
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        run: python3 Scripts/download-model.py
 
       - name: Build unsigned .app for iphoneos
         working-directory: BowlTrace
@@ -45,3 +72,51 @@ jobs:
           name: BowlTrace-unsigned-ipa
           path: BowlTrace/BowlTrace.ipa
           if-no-files-found: error
+
+  test:
+    # Unit tests run in a separate job so a failed test doesn't block the
+    # IPA build (the ipa job uploads as an artifact even if tests fail),
+    # and both jobs run in parallel on the same macos-14 runner pool.
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show selected Xcode
+        run: xcodebuild -version
+
+      # The test target imports `@testable import BowlTrace`, which links
+      # against the same ML detector resource the app uses. Reuse the same
+      # cache so we don't pay the ~3-5 min export cost twice.
+      - name: Cache BowlBallDetector.mlpackage
+        id: cache-model
+        uses: actions/cache@v4
+        with:
+          path: BowlTrace/BowlTrace/Resources/BowlBallDetector.mlpackage
+          key: bowlballdetector-mlpackage-${{ hashFiles('Scripts/download-model.py') }}
+
+      - name: Set up Python
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install YOLO-World export dependencies
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        run: pip install -U "ultralytics>=8.1" "coremltools>=7.1"
+
+      - name: Export YOLO-World to CoreML
+        if: steps.cache-model.outputs.cache-hit != 'true'
+        run: python3 Scripts/download-model.py
+
+      - name: Run unit tests
+        working-directory: BowlTrace
+        run: |
+          xcodebuild test \
+            -project BowlTrace.xcodeproj \
+            -scheme BowlTrace \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.5' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""

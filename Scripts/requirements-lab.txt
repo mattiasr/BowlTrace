@@ -1,0 +1,5 @@
+# Pinned dependencies for Scripts/trajectory_lab.py.
+# Compatible with Python 3.10+.
+ultralytics>=8.1,<9
+opencv-python>=4.9,<5
+numpy>=1.26,<3

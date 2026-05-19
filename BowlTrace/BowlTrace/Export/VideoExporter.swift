@@ -18,13 +18,20 @@ actor VideoExporter {
 
         let naturalSize = try await videoTrack.load(.naturalSize)
         let transform = try await videoTrack.load(.preferredTransform)
-        let correctedSize: CGSize
-        let t = transform
-        if t.b == 1 || t.b == -1 {
-            correctedSize = CGSize(width: naturalSize.height, height: naturalSize.width)
-        } else {
-            correctedSize = naturalSize
-        }
+        let orientation = cgImageOrientation(for: transform)
+        // Trajectory points and the renderer canvas are in *display*
+        // orientation (the detection pipeline tells Vision the orientation,
+        // so all rects come back in display Vision-norm). Frames from
+        // AVAssetReader, however, arrive in *storage* orientation, and we
+        // keep that path because writing at correctedSize while feeding
+        // naturalSize buffers raises NSInvalidArgumentException from
+        // AVAssetWriterInputPixelBufferAdaptor. So: render overlay at
+        // displaySize, rotate it back to storage orientation before
+        // compositing onto the storage frame, and let
+        // AVAssetWriterInput.transform carry the playback rotation.
+        let displaySize = naturalSize.applying(transform).abs
+        let overlayToStorage = displayToStorageImageTransform(orientation: orientation,
+                                                              displaySize: displaySize)
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("bowltrace_export_\(UUID().uuidString)")
@@ -33,17 +40,18 @@ actor VideoExporter {
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.hevc,
-            AVVideoWidthKey: Int(correctedSize.width),
-            AVVideoHeightKey: Int(correctedSize.height),
+            AVVideoWidthKey: Int(naturalSize.width),
+            AVVideoHeightKey: Int(naturalSize.height),
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 8_000_000]
         ]
         let writerVideoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         writerVideoInput.expectsMediaDataInRealTime = false
+        writerVideoInput.transform = transform
 
         let attrs: [CFString: Any] = [
             kCVPixelBufferPixelFormatTypeKey: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey: Int(correctedSize.width),
-            kCVPixelBufferHeightKey: Int(correctedSize.height),
+            kCVPixelBufferWidthKey: Int(naturalSize.width),
+            kCVPixelBufferHeightKey: Int(naturalSize.height),
             kCVPixelBufferIOSurfacePropertiesKey: [:]
         ]
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
@@ -82,7 +90,7 @@ actor VideoExporter {
         writer.startWriting()
         writer.startSession(atSourceTime: .zero)
 
-        let renderer = TrajectoryRenderer(videoSize: correctedSize)
+        let renderer = TrajectoryRenderer(videoSize: displaySize)
         let nominalRate = (try? await videoTrack.load(.nominalFrameRate)) ?? 30.0
         let totalFrames = Int((duration.seconds * Double(nominalRate)).rounded())
         var frameIndex = 0
@@ -102,16 +110,25 @@ actor VideoExporter {
                 if let outputBuffer = compositor.makeOutputPixelBuffer(matchingSize: pixelBuffer) {
                     if let overlayCI = renderer.render(trajectory: trajectory,
                                                        upToFraction: fraction,
+                                                       atFrameIndex: frameIndex,
                                                        style: traceStyle) {
+                        let oriented = overlayCI.transformed(by: overlayToStorage)
                         compositor.composite(sourceBuffer: pixelBuffer,
-                                             overlayImage: overlayCI,
+                                             overlayImage: oriented,
                                              into: outputBuffer)
-                        while !writerVideoInput.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.01) }
-                        adaptor.append(outputBuffer, withPresentationTime: pts)
                     } else {
-                        while !writerVideoInput.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.01) }
-                        adaptor.append(pixelBuffer, withPresentationTime: pts)
+                        // No visible trace points yet (typical on the
+                        // first frames before mlChainScan's seed has
+                        // produced a sample). Copy the source into our
+                        // own outputBuffer rather than handing the
+                        // writer a buffer from AVAssetReader's pool —
+                        // that's a different allocator and the adaptor
+                        // can raise NSInvalidArgumentException when
+                        // mixing pools.
+                        compositor.copy(sourceBuffer: pixelBuffer, into: outputBuffer)
                     }
+                    while !writerVideoInput.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.01) }
+                    adaptor.append(outputBuffer, withPresentationTime: pts)
                 }
             }
 
@@ -145,13 +162,31 @@ actor VideoExporter {
     }
 
     func saveToPhotos(url: URL) async throws {
+        // Step-through logging so we can tell from a user's Xcode console
+        // exactly where the save crash happens — permission denial,
+        // asset-creation rejection, or somewhere deeper in PhotoKit. The
+        // BT-SAVE prefix matches the BT-CRASH prefix used by the global
+        // exception/signal handler in BowlTraceApp.installCrashLogger.
+        NSLog("BT-SAVE start url=%@ exists=%d size=%lld",
+              url.path,
+              FileManager.default.fileExists(atPath: url.path) ? 1 : 0,
+              (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? -1)
+
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        NSLog("BT-SAVE auth status=%d", status.rawValue)
         guard status == .authorized || status == .limited else {
             throw AppError.permissionDenied("photo library")
         }
 
-        try await PHPhotoLibrary.shared().performChanges {
-            PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                let req = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+                NSLog("BT-SAVE creation req=%@", req == nil ? "nil" : "ok")
+            }
+            NSLog("BT-SAVE performChanges ok")
+        } catch {
+            NSLog("BT-SAVE performChanges error=%@", String(describing: error))
+            throw error
         }
     }
 }

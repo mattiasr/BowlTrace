@@ -17,6 +17,7 @@
 		CC000000000000000000CC08 /* VideoImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB08; };
 		CC000000000000000000CC09 /* BallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB09; };
 		CC000000000000000000CC0A /* CircleHeuristic.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0A; };
+		CC000000000000000000CC1D /* MLBallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB1D; };
 		CC000000000000000000CC0B /* TrajectoryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0B; };
 		CC000000000000000000CC0C /* FrameProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0C; };
 		CC000000000000000000CC0D /* BallTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB0D; };
@@ -33,7 +34,21 @@
 		CC000000000000000000CC18 /* BowlTraceButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB18; };
 		CC000000000000000000CC19 /* StatPillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB19; };
 		CC000000000000000000CC1A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB1C; };
+		CC000000000000000000CC1E /* BowlBallDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB1E; };
+		CC000000000000000000CC1F /* FixtureMediaFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB20; };
+		CC000000000000000000CC20 /* OverlayCompositorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB21; };
+		CC000000000000000000CC21 /* VideoExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000000000000000BB22; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FF000000000000000000FF04 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FF000000000000000000FF01 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FF000000000000000000FF02;
+			remoteInfo = BowlTrace;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		BB000000000000000000BB01 /* BowlTraceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlTraceApp.swift; sourceTree = "<group>"; };
@@ -46,6 +61,7 @@
 		BB000000000000000000BB08 /* VideoImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoImporter.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB09 /* BallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallDetector.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB0A /* CircleHeuristic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircleHeuristic.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB1D /* MLBallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MLBallDetector.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB0B /* TrajectoryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrajectoryModel.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB0C /* FrameProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameProcessor.swift; sourceTree = "<group>"; };
 		BB000000000000000000BB0D /* BallTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTracker.swift; sourceTree = "<group>"; };
@@ -64,10 +80,23 @@
 		BB000000000000000000BB1A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BB000000000000000000BB1B /* BowlTrace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BowlTrace.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB000000000000000000BB1C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Resources/Assets.xcassets"; sourceTree = "<group>"; name = Assets.xcassets; };
+		BB000000000000000000BB1E /* BowlBallDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = "Resources/BowlBallDetector.mlpackage"; sourceTree = "<group>"; name = BowlBallDetector.mlpackage; };
+		BB000000000000000000BB1F /* BowlTraceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BowlTraceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BB000000000000000000BB20 /* FixtureMediaFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureMediaFactory.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB21 /* OverlayCompositorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverlayCompositorTests.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB22 /* VideoExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoExporterTests.swift; sourceTree = "<group>"; };
+		BB000000000000000000BB23 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		DD000000000000000000DD02 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DD000000000000000000DD05 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -91,6 +120,7 @@
 				AA000000000000000000AA0B /* Export */,
 				AA000000000000000000AA0C /* UI */,
 				BB000000000000000000BB1C /* Assets.xcassets */,
+				BB000000000000000000BB1E /* BowlBallDetector.mlpackage */,
 				BB000000000000000000BB1A /* Info.plist */,
 			);
 			path = BowlTrace;
@@ -100,14 +130,27 @@
 			isa = PBXGroup;
 			children = (
 				BB000000000000000000BB1B /* BowlTrace.app */,
+				BB000000000000000000BB1F /* BowlTraceTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		AA000000000000000000AA0E /* BowlTraceTests */ = {
+			isa = PBXGroup;
+			children = (
+				BB000000000000000000BB20 /* FixtureMediaFactory.swift */,
+				BB000000000000000000BB21 /* OverlayCompositorTests.swift */,
+				BB000000000000000000BB22 /* VideoExporterTests.swift */,
+				BB000000000000000000BB23 /* Info.plist */,
+			);
+			path = BowlTraceTests;
 			sourceTree = "<group>";
 		};
 		AA000000000000000000AAFF /* MainGroup */ = {
 			isa = PBXGroup;
 			children = (
 				AA000000000000000000AA01 /* BowlTrace */,
+				AA000000000000000000AA0E /* BowlTraceTests */,
 				AA000000000000000000AA02 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -153,6 +196,7 @@
 			children = (
 				BB000000000000000000BB09 /* BallDetector.swift */,
 				BB000000000000000000BB0A /* CircleHeuristic.swift */,
+				BB000000000000000000BB1D /* MLBallDetector.swift */,
 			);
 			path = Detection;
 			sourceTree = "<group>";
@@ -235,6 +279,24 @@
 			productReference = BB000000000000000000BB1B /* BowlTrace.app */;
 			productType = "com.apple.product-type.application";
 		};
+		FF000000000000000000FF03 /* BowlTraceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EE000000000000000000EE09 /* Build configuration list for PBXNativeTarget "BowlTraceTests" */;
+			buildPhases = (
+				DD000000000000000000DD04 /* Sources */,
+				DD000000000000000000DD05 /* Frameworks */,
+				DD000000000000000000DD06 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FF000000000000000000FF05 /* PBXTargetDependency */,
+			);
+			name = BowlTraceTests;
+			productName = BowlTraceTests;
+			productReference = BB000000000000000000BB1F /* BowlTraceTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -247,6 +309,10 @@
 				TargetAttributes = {
 					FF000000000000000000FF02 = {
 						CreatedOnToolsVersion = 15.4;
+					};
+					FF000000000000000000FF03 = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = FF000000000000000000FF02;
 					};
 				};
 			};
@@ -264,6 +330,7 @@
 			projectRoot = "";
 			targets = (
 				FF000000000000000000FF02 /* BowlTrace */,
+				FF000000000000000000FF03 /* BowlTraceTests */,
 			);
 		};
 /* End PBXProject section */
@@ -274,6 +341,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				CC000000000000000000CC1A /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DD000000000000000000DD06 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -294,6 +368,7 @@
 				CC000000000000000000CC08 /* VideoImporter.swift in Sources */,
 				CC000000000000000000CC09 /* BallDetector.swift in Sources */,
 				CC000000000000000000CC0A /* CircleHeuristic.swift in Sources */,
+				CC000000000000000000CC1D /* MLBallDetector.swift in Sources */,
 				CC000000000000000000CC0B /* TrajectoryModel.swift in Sources */,
 				CC000000000000000000CC0C /* FrameProcessor.swift in Sources */,
 				CC000000000000000000CC0D /* BallTracker.swift in Sources */,
@@ -309,10 +384,29 @@
 				CC000000000000000000CC17 /* ResultPreviewView.swift in Sources */,
 				CC000000000000000000CC18 /* BowlTraceButtonStyle.swift in Sources */,
 				CC000000000000000000CC19 /* StatPillView.swift in Sources */,
+				CC000000000000000000CC1E /* BowlBallDetector.mlpackage in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DD000000000000000000DD04 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC000000000000000000CC1F /* FixtureMediaFactory.swift in Sources */,
+				CC000000000000000000CC20 /* OverlayCompositorTests.swift in Sources */,
+				CC000000000000000000CC21 /* VideoExporterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FF000000000000000000FF05 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FF000000000000000000FF02 /* BowlTrace */;
+			targetProxy = FF000000000000000000FF04 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		EE000000000000000000EE01 /* Debug */ = {
@@ -482,6 +576,58 @@
 			};
 			name = Release;
 		};
+		EE000000000000000000EE07 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BowlTraceTests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bowltrace.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BowlTrace.app/BowlTrace";
+			};
+			name = Debug;
+		};
+		EE000000000000000000EE08 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BowlTraceTests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bowltrace.app.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BowlTrace.app/BowlTrace";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -499,6 +645,15 @@
 			buildConfigurations = (
 				EE000000000000000000EE03 /* Debug */,
 				EE000000000000000000EE04 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EE000000000000000000EE09 /* Build configuration list for PBXNativeTarget "BowlTraceTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EE000000000000000000EE07 /* Debug */,
+				EE000000000000000000EE08 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

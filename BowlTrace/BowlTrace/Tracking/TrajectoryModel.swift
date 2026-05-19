@@ -1,6 +1,7 @@
 import Foundation
 import CoreMedia
 import UIKit
+import simd
 
 struct TrajectoryPoint: Codable, Identifiable {
     let id: UUID
@@ -36,23 +37,56 @@ struct TrajectoryPoint: Codable, Identifiable {
 struct TrajectoryModel {
     var points: [TrajectoryPoint]
     let videoSize: CGSize
+    /// Per-frame homography H_{i→0} mapping pixel coordinates in frame `i`
+    /// into frame `0`'s coordinate system. When non-nil the renderer
+    /// compensates camera motion by transforming each trail point through
+    /// `H_dst_inv @ H_src` so the trace stays anchored to the lane while
+    /// the camera moves. Computed during `BallTracker.track` via
+    /// `VNHomographicImageRegistrationRequest`. Array length equals the
+    /// number of video frames read.
+    var frameHomographies: [simd_float3x3]?
 
     init(points: [TrajectoryPoint] = [], videoSize: CGSize) {
         self.points = points
         self.videoSize = videoSize
+        self.frameHomographies = nil
     }
 
     var isEmpty: Bool { points.isEmpty }
 
+    /// Trajectory points whose source frame has already played by the time the
+    /// playback head sits on `frameIndex`. When `frameIndex` is nil (export
+    /// paths that key off video fraction instead, legacy callers, etc.) all
+    /// points are returned. Mirrors `fi <= frame_index` gating in
+    /// `Scripts/trajectory_lab.py::draw_video`.
+    func visiblePoints(upToFrameIndex frameIndex: Int?) -> [TrajectoryPoint] {
+        guard let frameIndex else { return points }
+        return points.filter { $0.frameIndex <= frameIndex }
+    }
+
     func uiKitPath(in bounds: CGRect) -> UIBezierPath {
-        guard points.count > 1 else { return UIBezierPath() }
+        return uiKitPath(in: bounds, atFrameIndex: nil)
+    }
+
+    /// Build a smooth path through the trajectory. When `atFrameIndex` is
+    /// provided, the path is also trimmed to points whose `frameIndex` has
+    /// already passed, so the trace draws progressively as the ball arrives
+    /// rather than appearing fully at video start. When `frameHomographies`
+    /// is also set, each visible point is moved into `atFrameIndex`'s
+    /// coordinate system to keep the trace anchored to the lane while the
+    /// camera pans / shakes. Falls back to the un-stabilized, un-trimmed
+    /// version when `atFrameIndex` is nil.
+    func uiKitPath(in bounds: CGRect, atFrameIndex frameIndex: Int?) -> UIBezierPath {
+        let visible = visiblePoints(upToFrameIndex: frameIndex)
+        guard visible.count > 1 else { return UIBezierPath() }
         let path = UIBezierPath()
-        let mapped = points.map { point -> CGPoint in
-            let x = point.normalizedCenter.x * bounds.width
-            // Vision uses bottom-left origin; UIKit uses top-left — flip Y
-            let y = (1.0 - point.normalizedCenter.y) * bounds.height
+        let mapped: [CGPoint] = visible.compactMap { point -> CGPoint? in
+            let n = stabilizedNormalizedCenter(for: point, atFrameIndex: frameIndex)
+            let x = n.x * bounds.width
+            let y = (1.0 - n.y) * bounds.height
             return CGPoint(x: x + bounds.minX, y: y + bounds.minY)
         }
+        guard mapped.count > 1 else { return UIBezierPath() }
         path.move(to: mapped[0])
         if mapped.count == 2 {
             path.addLine(to: mapped[1])
@@ -67,9 +101,38 @@ struct TrajectoryModel {
         return path
     }
 
-    func point(atFraction fraction: Double) -> CGPoint? {
-        guard !points.isEmpty else { return nil }
-        let index = min(Int(fraction * Double(points.count - 1)), points.count - 1)
-        return points[index].normalizedCenter
+    /// Returns the normalized coordinates (vision-style, bottom-left origin)
+    /// that `point.normalizedCenter` should be rendered at when the camera
+    /// is currently showing `atFrameIndex`. Without homographies (or with
+    /// `atFrameIndex == nil`) this is the identity; with them, the point
+    /// is moved through `H_dst_inv @ H_src`.
+    func stabilizedNormalizedCenter(for point: TrajectoryPoint,
+                                     atFrameIndex frameIndex: Int?) -> CGPoint {
+        guard let frameIndex,
+              let homographies = frameHomographies,
+              frameIndex >= 0, frameIndex < homographies.count,
+              point.frameIndex >= 0, point.frameIndex < homographies.count,
+              videoSize.width > 0, videoSize.height > 0
+        else { return point.normalizedCenter }
+
+        let h_dst = homographies[frameIndex]
+        let h_src = homographies[point.frameIndex]
+        let composed = simd_inverse(h_dst) * h_src
+
+        // Vision-norm (bottom-left origin) → pixel (top-left origin) in
+        // the source video's pixel space.
+        let videoW = Float(videoSize.width)
+        let videoH = Float(videoSize.height)
+        let px = Float(point.normalizedCenter.x) * videoW
+        let py = Float(1.0 - point.normalizedCenter.y) * videoH
+        let homogeneous = SIMD3<Float>(px, py, 1.0)
+        let transformed = composed * homogeneous
+        guard abs(transformed.z) > 1e-6 else { return point.normalizedCenter }
+        let newPx = transformed.x / transformed.z
+        let newPy = transformed.y / transformed.z
+        return CGPoint(
+            x: CGFloat(newPx) / videoSize.width,
+            y: 1.0 - CGFloat(newPy) / videoSize.height
+        )
     }
 }

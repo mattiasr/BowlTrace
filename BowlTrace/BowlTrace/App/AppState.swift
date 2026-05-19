@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import CoreGraphics
 
 enum AppPhase {
     case idle
@@ -16,6 +17,19 @@ enum ProcessingStage: String {
     case locatingBall = "Locating ball…"
     case mappingTrajectory = "Mapping trajectory…"
     case finishing = "Finishing up…"
+}
+
+/// Why the user has landed in `ManualSelectView`. Drives the contextual banner.
+enum ManualSeedReason {
+    case autoFailed
+    case userChoseManual
+    case userRepick
+}
+
+/// Why processing is running. Drives the ProcessingView subtitle.
+enum ProcessingReason {
+    case initial
+    case reanalyze
 }
 
 struct ProcessedVideo: Identifiable {
@@ -41,6 +55,14 @@ final class AppState: ObservableObject {
     @Published var currentError: AppError?
     @Published var exportProgress: Double = 0
     @Published var traceStyle: TraceStyle = .glow
+    @Published var lastManualSeedReason: ManualSeedReason = .autoFailed
+    @Published var lastProcessingReason: ProcessingReason = .initial
+
+    /// Minimum useful trajectory length from the auto-detect path. Anything
+    /// shorter is treated as a failed run — the seed was wrong and the
+    /// tracker bailed out early. Routes the user to manual instead of
+    /// landing them on the result preview with an invisible trace.
+    private let minAutoTrajectoryPoints = 8
 
     enum TraceStyle: String, CaseIterable {
         case dot = "Dot"
@@ -59,13 +81,73 @@ final class AppState: ObservableObject {
         phase = .processing(.readingFrames)
     }
 
+    /// Runs the full auto-detect + track pipeline on the given video, then
+    /// transitions to `.previewing` on success. Falls back to
+    /// `.awaitingManualSeed` if auto-detect can't find a ball — same behaviour
+    /// as the import flow's auto path. Use this for both the initial import
+    /// auto-detect and the result-screen "Re-analyze" action.
+    func runAutoPipeline(videoURL: URL, reason: ProcessingReason = .initial) {
+        lastProcessingReason = reason
+        startProcessing(videoURL: videoURL)
+        Task { await runDetectionPipeline(videoURL: videoURL) }
+    }
+
+    private func runDetectionPipeline(videoURL: URL) async {
+        let detector = BallDetector()
+        do {
+            updateProgress(0.1, stage: .readingFrames)
+            let asset = try await VideoAsset.load(from: videoURL)
+
+            updateProgress(0.3, stage: .locatingBall)
+            guard let seed = try await detector.detect(in: AVURLAsset(url: asset.url)) else {
+                triggerManualSeed(videoURL: videoURL)
+                return
+            }
+
+            updateProgress(0.5, stage: .mappingTrajectory, confidence: 0.85)
+            let tracker = BallTracker()
+            let trajectory = try await tracker.track(
+                in: AVURLAsset(url: asset.url),
+                seedRect: seed.rect,
+                seedFrame: seed.frameIndex,
+                referenceColor: seed.referenceColor,
+                videoSize: asset.naturalSize,
+                progressHandler: { progress in
+                    Task { @MainActor [weak self] in
+                        self?.updateProgress(0.5 + progress * 0.45, stage: .mappingTrajectory)
+                    }
+                }
+            )
+
+            // Bail out if the tracker bailed after a handful of frames — this
+            // is the common failure mode on left-handed clips and other
+            // hard-to-detect cases: BallDetector picked SOME seed (so we
+            // didn't fall back to manual via the nil-seed path above) but
+            // VNTrackObjectRequest reported low confidence on the very first
+            // tracked frames and gave up. The result would otherwise be a
+            // .previewing phase with an empty / invisible trace. Route to
+            // manual instead so the user can hand-pick.
+            if trajectory.points.count < minAutoTrajectoryPoints {
+                triggerManualSeed(videoURL: videoURL)
+                return
+            }
+
+            updateProgress(1.0, stage: .finishing)
+            try await Task.sleep(nanoseconds: 300_000_000)
+            finishProcessing(trajectory: trajectory, sourceURL: videoURL)
+        } catch {
+            setError(.importFailed(underlying: error))
+        }
+    }
+
     func updateProgress(_ progress: Double, stage: ProcessingStage, confidence: Float = 0) {
         processingProgress = progress
         processingStage = stage
         if confidence > 0 { detectionConfidence = confidence }
     }
 
-    func triggerManualSeed(videoURL: URL) {
+    func triggerManualSeed(videoURL: URL, reason: ManualSeedReason = .autoFailed) {
+        lastManualSeedReason = reason
         phase = .awaitingManualSeed(videoURL)
     }
 

@@ -1,0 +1,38 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# CoreML model artifacts — downloaded per-clone via Scripts/download-model.py
+BowlTrace/BowlTrace/Resources/BowlBallDetector.mlmodel
+BowlTrace/BowlTrace/Resources/BowlBallDetector.mlmodelc/
+BowlTrace/BowlTrace/Resources/BowlBallDetector.mlpackage/
+
+# Python virtualenvs used by Scripts/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Output of Scripts/trajectory_lab.py (annotated MP4s + JSON dumps,
+# debug frame snapshots, downloaded model weights cached by ultralytics).
+Scripts/lab-out/
+Scripts/bowl1.frame*.png
+yolov*.pt
+yolov*.mlpackage/
+yolov*.mlmodel
+
+# Claude Code session state
+.claude/

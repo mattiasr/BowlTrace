@@ -12,6 +12,11 @@ struct ResultPreviewView: View {
     @State private var exportedURL: URL?
     @State private var playerProgress: Double = 0
     @State private var playerTimer: Timer?
+    // Observer token for AVPlayerItemDidPlayToEndTime so a player rebuild
+    // (e.g. after re-pick / re-analyze) can detach the old observer instead
+    // of leaking it and re-seeking the previous player.
+    @State private var endOfPlaybackObserver: NSObjectProtocol?
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,8 +33,26 @@ struct ResultPreviewView: View {
         .sheet(isPresented: $showShareSheet) {
             if let url = exportedURL { ShareSheet(url: url) }
         }
+        .alert("Delete this trace?", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive) { appState.reset() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("The trajectory will be discarded. The original video is unaffected.")
+        }
         .onAppear { setupPlayer() }
-        .onDisappear { playerTimer?.invalidate() }
+        .onDisappear { teardownPlayer() }
+        // Belt-and-braces: if SwiftUI happens to reuse this view instance for
+        // a new ProcessedVideo (the parent .id(video.id) already aims to
+        // prevent that, but identity heuristics can surprise you), rebuild
+        // the player + timer + overlay state so the preview reflects the new
+        // trajectory and video URL instead of showing the previous run.
+        .onChange(of: video.id) { _, _ in
+            teardownPlayer()
+            playerProgress = 0
+            exportedURL = nil
+            exportSuccess = false
+            setupPlayer()
+        }
     }
 
     private var navigationBar: some View {
@@ -50,10 +73,15 @@ struct ResultPreviewView: View {
 
             Menu {
                 Button("Share", systemImage: "square.and.arrow.up") { triggerShare() }
-                Button("Re-analyze", systemImage: "arrow.clockwise") {
-                    appState.startProcessing(videoURL: video.sourceURL)
+                Button("Re-pick ball", systemImage: "scope") {
+                    appState.triggerManualSeed(videoURL: video.sourceURL, reason: .userRepick)
                 }
-                Button("Delete", systemImage: "trash", role: .destructive) { appState.reset() }
+                Button("Re-analyze", systemImage: "arrow.clockwise") {
+                    appState.runAutoPipeline(videoURL: video.sourceURL, reason: .reanalyze)
+                }
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                    showDeleteConfirmation = true
+                }
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 18, weight: .medium))
@@ -73,39 +101,61 @@ struct ResultPreviewView: View {
                     .disabled(false)
             }
 
-            // Trajectory overlay (SwiftUI Canvas)
+            // Trajectory overlay (SwiftUI Canvas). When the trajectory was
+            // computed with stabilization data, derive the currently-shown
+            // frame index from playback progress and pass it through so
+            // every drawn point gets transformed into the displayed frame's
+            // coordinate system (keeping the trace glued to the lane while
+            // the camera pans).
             GeometryReader { geo in
                 Canvas { context, size in
                     let bounds = CGRect(origin: .zero, size: size)
-                    let path = video.trajectory.uiKitPath(in: bounds)
-                    drawTrace(path: path, context: &context, style: appState.traceStyle)
-
-                    // Animated ball dot
-                    if let center = video.trajectory.point(atFraction: playerProgress) {
-                        let px = center.x * size.width
-                        let py = (1.0 - center.y) * size.height
-                        let circle = Path(ellipseIn: CGRect(x: px-8, y: py-8, width: 16, height: 16))
-                        context.fill(circle, with: .color(.white.opacity(0.9)))
-                    }
+                    let currentFrame = currentFrameIndex
+                    let path = video.trajectory.uiKitPath(in: bounds,
+                                                          atFrameIndex: currentFrame)
+                    drawTrace(path: path, context: &context, size: size,
+                              style: appState.traceStyle,
+                              atFrameIndex: currentFrame)
                 }
                 .allowsHitTesting(false)
             }
         }
-        .aspectRatio(16/9, contentMode: .fit)
+        .aspectRatio(videoAspect, contentMode: .fit)
         .cornerRadius(14)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
         .padding(.top, 4)
     }
 
-    private func drawTrace(path: UIBezierPath, context: inout GraphicsContext, style: AppState.TraceStyle) {
+    private var videoAspect: CGFloat {
+        let size = video.trajectory.videoSize
+        guard size.height > 0 else { return 16.0/9.0 }
+        return size.width / size.height
+    }
+
+    /// Frame index of the currently-displayed playback position. Used to
+    /// stabilize the trace against camera motion via the trajectory's
+    /// per-frame homographies. Returns nil when no stabilization data is
+    /// available so renderers fall back to the unstabilized path.
+    private var currentFrameIndex: Int? {
+        guard let H = video.trajectory.frameHomographies, !H.isEmpty else { return nil }
+        let total = H.count
+        let clamped = min(max(0.0, playerProgress), 1.0)
+        return min(Int(clamped * Double(total - 1)), total - 1)
+    }
+
+    private func drawTrace(path: UIBezierPath, context: inout GraphicsContext,
+                           size: CGSize, style: AppState.TraceStyle,
+                           atFrameIndex frameIndex: Int?) {
         let swiftuiPath = Path(path.cgPath)
         switch style {
         case .dot:
-            // Dots drawn per point
-            for point in video.trajectory.points {
-                let px = point.normalizedCenter.x
-                let py = 1.0 - point.normalizedCenter.y
-                let circle = Path(ellipseIn: CGRect(x: px * 390 - 4, y: py * 220 - 4, width: 8, height: 8))
+            for point in video.trajectory.visiblePoints(upToFrameIndex: frameIndex) {
+                let stable = video.trajectory.stabilizedNormalizedCenter(
+                    for: point, atFrameIndex: frameIndex
+                )
+                let px = stable.x * size.width
+                let py = (1.0 - stable.y) * size.height
+                let circle = Path(ellipseIn: CGRect(x: px - 4, y: py - 4, width: 8, height: 8))
                 context.fill(circle, with: .color(Color.btAccent.opacity(0.8)))
             }
         case .line:
@@ -176,6 +226,11 @@ struct ResultPreviewView: View {
     }
 
     private func setupPlayer() {
+        // Tear down any existing player so a re-setup (re-pick / re-analyze)
+        // doesn't leave the previous AVPlayer + timer + loop observer alive
+        // driving playerProgress from the OLD AVPlayerItem.
+        teardownPlayer()
+
         let p = AVPlayer(url: video.sourceURL)
         player = p
         p.play()
@@ -184,11 +239,25 @@ struct ResultPreviewView: View {
             let current = p.currentTime().seconds
             playerProgress = current / dur
         }
-        NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime,
-                                               object: p.currentItem, queue: .main) { _ in
+        endOfPlaybackObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: p.currentItem,
+            queue: .main
+        ) { _ in
             p.seek(to: .zero)
             p.play()
         }
+    }
+
+    private func teardownPlayer() {
+        playerTimer?.invalidate()
+        playerTimer = nil
+        if let observer = endOfPlaybackObserver {
+            NotificationCenter.default.removeObserver(observer)
+            endOfPlaybackObserver = nil
+        }
+        player?.pause()
+        player = nil
     }
 
     private func startExport() {
@@ -207,8 +276,8 @@ struct ResultPreviewView: View {
                     }
                 )
                 try await exporter.saveToPhotos(url: url)
-                exportedURL = url
                 await MainActor.run {
+                    exportedURL = url
                     isExporting = false
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     withAnimation(.spring()) { exportSuccess = true }
