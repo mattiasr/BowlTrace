@@ -18,6 +18,10 @@ struct ManualSelectView: View {
     /// BallTracker so the tracker skips frames before the user's chosen
     /// keyframe instead of running on frame 0.
     @State private var nominalFrameRate: Double = 30
+    /// In-flight seek task so a rapid scrub can cancel its predecessors —
+    /// without this, concurrent `extractFrame` tasks would finish out of
+    /// order and overwrite currentFrame with stale data.
+    @State private var seekTask: Task<Void, Never>?
     @State private var showHint = true
     @State private var isConfirming = false
 
@@ -295,8 +299,21 @@ struct ManualSelectView: View {
         let dur = (try? await avAsset.load(.duration))?.seconds ?? 1
         let tracks = (try? await avAsset.loadTracks(withMediaType: .video)) ?? []
         if let track = tracks.first {
-            if let size = try? await track.load(.naturalSize) {
-                videoSize = size
+            // Apply the track's preferredTransform to naturalSize so videoSize
+            // is the DISPLAY orientation (e.g. 1080x1920 portrait) rather than
+            // the sensor's storage orientation (1920x1080 landscape). Without
+            // this, the frame viewer container forces a landscape aspect ratio
+            // around the portrait image extractFrame returns (which already
+            // applies preferredTransform), producing huge black bars. It also
+            // throws off the seed normalization passed into TapToSeedView /
+            // BallTracker — both want display-orientation coords.
+            let natural = (try? await track.load(.naturalSize)) ?? .zero
+            let transform = (try? await track.load(.preferredTransform)) ?? .identity
+            let corrected = natural.applying(transform).abs
+            if corrected.width > 0 && corrected.height > 0 {
+                videoSize = corrected
+            } else if natural.width > 0 && natural.height > 0 {
+                videoSize = natural
             }
             if let rate = try? await track.load(.nominalFrameRate), rate > 0 {
                 nominalFrameRate = Double(rate)
@@ -310,8 +327,13 @@ struct ManualSelectView: View {
     }
 
     private func seekToPosition(_ fraction: Double) {
+        // Cancel any in-flight seek so a rapid scrub doesn't pile up
+        // overlapping extractFrame tasks racing to assign currentFrame —
+        // those used to "win" out of order and either flicker or lock the
+        // displayed frame to a stale time.
+        seekTask?.cancel()
         let time = CMTime(seconds: fraction * duration, preferredTimescale: 600)
-        Task { await loadFrame(at: time.seconds) }
+        seekTask = Task { await loadFrame(at: time.seconds) }
     }
 
     private func stepFrames(_ count: Int) {

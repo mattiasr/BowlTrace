@@ -58,6 +58,12 @@ final class AppState: ObservableObject {
     @Published var lastManualSeedReason: ManualSeedReason = .autoFailed
     @Published var lastProcessingReason: ProcessingReason = .initial
 
+    /// Minimum useful trajectory length from the auto-detect path. Anything
+    /// shorter is treated as a failed run — the seed was wrong and the
+    /// tracker bailed out early. Routes the user to manual instead of
+    /// landing them on the result preview with an invisible trace.
+    private let minAutoTrajectoryPoints = 8
+
     enum TraceStyle: String, CaseIterable {
         case dot = "Dot"
         case line = "Line"
@@ -112,6 +118,19 @@ final class AppState: ObservableObject {
                     }
                 }
             )
+
+            // Bail out if the tracker bailed after a handful of frames — this
+            // is the common failure mode on left-handed clips and other
+            // hard-to-detect cases: BallDetector picked SOME seed (so we
+            // didn't fall back to manual via the nil-seed path above) but
+            // VNTrackObjectRequest reported low confidence on the very first
+            // tracked frames and gave up. The result would otherwise be a
+            // .previewing phase with an empty / invisible trace. Route to
+            // manual instead so the user can hand-pick.
+            if trajectory.points.count < minAutoTrajectoryPoints {
+                triggerManualSeed(videoURL: videoURL)
+                return
+            }
 
             updateProgress(1.0, stage: .finishing)
             try await Task.sleep(nanoseconds: 300_000_000)
