@@ -38,11 +38,17 @@ actor BallTracker {
     /// to 4 so a wobbly VNTrackObject is corrected twice as often.
     private let mlAnchorInterval = 4
 
-    /// Maximum normalized distance between the predicted next position and an
-    /// ML detection for that detection to be accepted as the same ball.
-    /// 0.15 ≈ 15% of frame width — generous enough to cover a fast roll between
-    /// anchor frames but tight enough to reject other balls/pins on the lane.
-    private let mlAnchorMaxDistance: CGFloat = 0.15
+    /// Per-frame budget for how far an ML detection can be from the
+    /// velocity-predicted next position and still be accepted. The
+    /// effective gate is `mlAnchorPerFrameMaxDistance × frameGap`, where
+    /// `frameGap` is the number of frames since the last trajectory point
+    /// was appended. Replaces the previous flat 0.15 constant, which on
+    /// fast rolls was rejecting valid detections — the ball can move
+    /// 20%+ of frame width in 4 frames at release speed, well past 0.15,
+    /// so the gate stayed closed during the actual roll and only opened
+    /// after the ball stopped at the pins. Result was the visible
+    /// "trace lags behind the ball, appears at pin impact" symptom.
+    private let mlAnchorPerFrameMaxDistance: CGFloat = 0.05
 
     /// Confidence at which we trust the ML detector enough to re-anchor the
     /// optical-flow tracker. 0.15 matches `BallDetector.mlSeedConfidenceThreshold`
@@ -272,9 +278,23 @@ actor BallTracker {
                 if let mlRect = mlDetector.detect(in: pixelBuffer, orientation: orientation) {
                     let mlCenter = CGPoint(x: mlRect.midX, y: mlRect.midY)
                     let accept: Bool
-                    if let predicted = predictedNextCenter(history: trajectory.points,
-                                                          fallback: previousCenter) {
-                        let spatialOK = distance(predicted, mlCenter) <= mlAnchorMaxDistance
+                    // Early run: trust the ML detection unconditionally.
+                    // Velocity prediction needs ≥2 points; without it the
+                    // spatial gate compares to the seed and rejects any
+                    // ball that's already started moving.
+                    if trajectory.points.count < 3 {
+                        accept = true
+                    } else if let predicted = predictedNextCenter(history: trajectory.points,
+                                                                  fallback: previousCenter,
+                                                                  currentFrame: frameIndex) {
+                        // Scale the spatial budget by how many frames have
+                        // passed since the last trajectory point. A ball
+                        // moving at, say, 4% per frame fits comfortably
+                        // within mlAnchorPerFrameMaxDistance × frameGap.
+                        let lastFrame = trajectory.points.last?.frameIndex ?? frameIndex
+                        let frameGap = max(1, frameIndex - lastFrame)
+                        let maxDist = mlAnchorPerFrameMaxDistance * CGFloat(frameGap)
+                        let spatialOK = distance(predicted, mlCenter) <= maxDist
                         // Colour gate: a candidate must look like the ball
                         // we're tracking. If we have no reference colour
                         // (heuristic-only seed, model not bundled) we skip
@@ -340,13 +360,27 @@ actor BallTracker {
 
     // MARK: - ML anchor helpers
 
-    /// Linear extrapolation of the next position from the last two observed centers.
-    /// Falls back to the most recent center (or `fallback`) when history is too short.
-    private func predictedNextCenter(history: [TrajectoryPoint], fallback: CGPoint?) -> CGPoint? {
+    /// Linear extrapolation of the ball's position at `currentFrame` from
+    /// the last two observed points. Velocity is computed per-frame from
+    /// the two-point window (so a gap in the trajectory doesn't make us
+    /// under-extrapolate), then scaled by the number of frames between
+    /// the most recent point and `currentFrame`.
+    /// Falls back to the most recent center (or `fallback`) when history
+    /// is too short.
+    private func predictedNextCenter(history: [TrajectoryPoint],
+                                     fallback: CGPoint?,
+                                     currentFrame: Int) -> CGPoint? {
         if history.count >= 2 {
-            let a = history[history.count - 2].normalizedCenter
-            let b = history[history.count - 1].normalizedCenter
-            return CGPoint(x: b.x + (b.x - a.x), y: b.y + (b.y - a.y))
+            let a = history[history.count - 2]
+            let b = history[history.count - 1]
+            let frameSpan = max(1, b.frameIndex - a.frameIndex)
+            let vx = (b.normalizedCenter.x - a.normalizedCenter.x) / CGFloat(frameSpan)
+            let vy = (b.normalizedCenter.y - a.normalizedCenter.y) / CGFloat(frameSpan)
+            let stepsAhead = max(1, currentFrame - b.frameIndex)
+            return CGPoint(
+                x: b.normalizedCenter.x + vx * CGFloat(stepsAhead),
+                y: b.normalizedCenter.y + vy * CGFloat(stepsAhead)
+            )
         }
         if let last = history.last?.normalizedCenter { return last }
         return fallback
