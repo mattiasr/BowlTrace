@@ -5,7 +5,13 @@ import simd
 
 actor BallTracker {
     private let confidenceThreshold: Float = 0.25
-    private let lowConfidenceLimit = 5
+    /// Doubled from 5 — VNTrackObjectRequest can hiccup on motion blur or
+    /// brief occlusion (bowler's hand sweeps past) and report low confidence
+    /// for several frames before recovering. The ML re-anchor block below
+    /// resets this counter whenever it accepts a detection, so giving the
+    /// tracker more rope here lets ML rescue tough clips instead of the
+    /// whole run bailing out after a 5-frame patch.
+    private let lowConfidenceLimit = 10
     private let maxFrameGap = 5
     private let smoothingAlpha: Double = 0.4
 
@@ -20,13 +26,17 @@ actor BallTracker {
     /// Maximum normalized RGB distance between an ML candidate and the
     /// running appearance reference for the candidate to be accepted as the
     /// ball. RGB distance is normalized so 0 = identical, 1 = polar opposite
-    /// (e.g. white vs black). 0.3 leaves headroom for lighting / motion blur
-    /// changes while still rejecting "different ball entirely" anchors.
-    private let mlColorMaxDistance: Double = 0.3
+    /// (e.g. white vs black). Loosened from 0.3 to 0.5: the previous gate
+    /// was rejecting valid ML detections when the ball moved into different
+    /// lighting along the lane (or when the manual seed's refColor was
+    /// sampled in shadow), which left VNTrackObjectRequest to drift unaided.
+    /// Spatial gate at 0.15 normalized distance is still the main filter.
+    private let mlColorMaxDistance: Double = 0.5
 
     /// Re-anchor the VNTrackObjectRequest with a fresh ML detection every Nth
-    /// frame so the tracker doesn't drift over long videos.
-    private let mlAnchorInterval = 8
+    /// frame so the tracker doesn't drift over long videos. Lowered from 8
+    /// to 4 so a wobbly VNTrackObject is corrected twice as often.
+    private let mlAnchorInterval = 4
 
     /// Maximum normalized distance between the predicted next position and an
     /// ML detection for that detection to be accepted as the same ball.
@@ -208,6 +218,11 @@ actor BallTracker {
 
             try? sequenceHandler.perform([request], on: pixelBuffer, orientation: orientation)
 
+            // Did this frame produce a trajectory point from VNTrackObject?
+            // If not (low confidence) the ML re-anchor below gets a chance
+            // to fill in the gap with its own detection.
+            var appendedThisFrame = false
+
             if let result = request.results?.first as? VNDetectedObjectObservation {
                 // Always advance the tracker so it doesn't get stuck on a stale seed
                 lastObservation = result
@@ -226,6 +241,7 @@ actor BallTracker {
                     )
                     trajectory.points.append(point)
                     previousCenter = center
+                    appendedThisFrame = true
 
                     // EMA-update the appearance reference using whatever is
                     // inside the tracked box. Keeps the colour adapting to
@@ -278,8 +294,28 @@ actor BallTracker {
                         accept = true
                     }
                     if accept {
+                        // Re-seed VNTrackObjectRequest so the next frame
+                        // picks up the ML-corrected position instead of
+                        // continuing to drift.
                         lastObservation = VNDetectedObjectObservation(boundingBox: mlRect)
                         previousCenter = mlCenter
+                        // ML rescued us — VNTrackObject's low-confidence
+                        // streak shouldn't be allowed to bail the run out.
+                        lowConfidenceStreak = 0
+                        // If VNTrackObject didn't append a point for this
+                        // frame (because it was low confidence), use the ML
+                        // detection directly. Otherwise the trajectory has
+                        // a hole every time the tracker hiccups.
+                        if !appendedThisFrame {
+                            let mlPoint = TrajectoryPoint(
+                                frameIndex: frameIndex,
+                                timestamp: pts,
+                                normalizedCenter: mlCenter,
+                                confidence: confidenceThreshold
+                            )
+                            trajectory.points.append(mlPoint)
+                            appendedThisFrame = true
+                        }
                     }
                 }
             }

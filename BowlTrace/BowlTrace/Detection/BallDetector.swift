@@ -245,15 +245,14 @@ actor BallDetector {
         // monotonic motion signature of a real ball roll over the
         // wobble of false-positive chains.
         // Minimum directness (net displacement / path length) for a chain
-        // to be considered a real ball roll. A clean roll runs ~0.85+; lane
-        // logos / shadows / bowler-hand chains wobble in the 0.2-0.4 range.
-        // 0.6 is the boundary that empirically separates them in the harness
-        // and gives auto-detect permission to FAIL (return nil) when there's
-        // no good chain — without this floor we'd still pick the
-        // least-bad option and hand BallTracker a wrong seed, which on
-        // left-handed clips ends with the tracker bailing after a few
-        // frames and producing an invisible empty trajectory.
-        let minDirectness: CGFloat = 0.6
+        // to be considered a real ball roll. Lowered from 0.6 to 0.4 after
+        // user testing: clean rolls run 0.7+, but hook shots and chains
+        // that have brief noisy detections in the middle of an otherwise
+        // straight roll drop to 0.4-0.6. A 0.6 floor was rejecting some
+        // valid left-hander rolls and forcing auto-detect to bail. 0.4
+        // still filters out wobbly false-positives (lane logos / bowler
+        // hand chains run 0.2-0.3).
+        let minDirectness: CGFloat = 0.4
         struct ChainScore { let chain: [Hit]; let directness: CGFloat }
         let scored: [ChainScore] = chains.compactMap { chain -> ChainScore? in
             guard chain.count >= chainLength else { return nil }
