@@ -337,10 +337,16 @@ struct ManualSelectView: View {
     }
 
     private func stepFrames(_ count: Int) {
-        let frameDuration = 1.0 / 30.0
+        // Step at the actual nominal frame rate (not a hardcoded 30 fps —
+        // iPhone clips are typically 30 or 60 fps), and only update
+        // scrubPosition. The Slider's .onChange handler fires the seek
+        // from there. We used to ALSO call seekToPosition explicitly,
+        // which raced against the .onChange-fired seek through the
+        // task-cancellation logic and could leave the displayed frame
+        // pinned to the previous step.
+        let frameDuration = 1.0 / max(nominalFrameRate, 1.0)
         let newSeconds = max(0, min((scrubPosition * duration) + Double(count) * frameDuration, duration))
         scrubPosition = newSeconds / max(duration, 0.001)
-        seekToPosition(scrubPosition)
     }
 
     private func loadFrame(at seconds: Double) async {

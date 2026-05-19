@@ -162,13 +162,31 @@ actor VideoExporter {
     }
 
     func saveToPhotos(url: URL) async throws {
+        // Step-through logging so we can tell from a user's Xcode console
+        // exactly where the save crash happens — permission denial,
+        // asset-creation rejection, or somewhere deeper in PhotoKit. The
+        // BT-SAVE prefix matches the BT-CRASH prefix used by the global
+        // exception/signal handler in BowlTraceApp.installCrashLogger.
+        NSLog("BT-SAVE start url=%@ exists=%d size=%lld",
+              url.path,
+              FileManager.default.fileExists(atPath: url.path) ? 1 : 0,
+              (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? -1)
+
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        NSLog("BT-SAVE auth status=%d", status.rawValue)
         guard status == .authorized || status == .limited else {
             throw AppError.permissionDenied("photo library")
         }
 
-        try await PHPhotoLibrary.shared().performChanges {
-            PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                let req = PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: url)
+                NSLog("BT-SAVE creation req=%@", req == nil ? "nil" : "ok")
+            }
+            NSLog("BT-SAVE performChanges ok")
+        } catch {
+            NSLog("BT-SAVE performChanges error=%@", String(describing: error))
+            throw error
         }
     }
 }

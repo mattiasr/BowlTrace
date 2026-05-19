@@ -16,18 +16,34 @@ struct BowlTraceApp: App {
         }
     }
 
-    /// Last-resort logger for uncaught Objective-C exceptions (which iOS
-    /// throws from PHPhotoLibrary, AVAssetWriter, and other Apple frameworks
-    /// when their preconditions are violated). Without this, the app abort
-    /// is invisible to the user — they see "BowlTrace crashed" and nothing
-    /// reaches the Xcode console. Diagnostic only; remove once the
-    /// save-to-camera-roll crash is pinned down.
+    /// Last-resort logger for uncaught crashes during the save-to-camera-roll
+    /// path. Two layers: NSException covers Objective-C throws from
+    /// PHPhotoLibrary / AVAssetWriter etc., and the signal handlers catch
+    /// the pure-C aborts (SIGABRT from assertions, SIGSEGV/SIGBUS from
+    /// memory faults) that bypass the NSException machinery. Both write
+    /// `BT-CRASH …` lines to the Xcode console (`os_log` / `NSLog`) so
+    /// the user can copy/paste them back to us. Diagnostic only; remove
+    /// once the crash root cause is pinned down.
     private static func installCrashLogger() {
         NSSetUncaughtExceptionHandler { exception in
             NSLog("BT-CRASH name=%@", exception.name.rawValue)
             NSLog("BT-CRASH reason=%@", exception.reason ?? "<nil>")
             NSLog("BT-CRASH userInfo=%@", String(describing: exception.userInfo))
             exception.callStackSymbols.forEach { NSLog("BT-CRASH  %@", $0) }
+        }
+        // Apple frameworks sometimes abort the process with a signal (e.g.
+        // PHPhotoLibrary on an unprivileged URL, AVAssetWriter on a state-
+        // machine violation) rather than throwing NSException. Hook the
+        // common signals so we still get a stack trace in those cases.
+        for sig: Int32 in [SIGABRT, SIGILL, SIGSEGV, SIGBUS, SIGFPE, SIGPIPE] {
+            signal(sig) { signum in
+                NSLog("BT-CRASH signal=%d", signum)
+                Thread.callStackSymbols.forEach { NSLog("BT-CRASH  %@", $0) }
+                // Re-raise so the system still terminates the process with
+                // the original signal (otherwise we'd swallow the crash).
+                signal(signum, SIG_DFL)
+                raise(signum)
+            }
         }
     }
 }
